@@ -1,0 +1,66 @@
+<?php
+
+declare(strict_types=1);
+
+use App\Modules\Dashboard\Presentation\Http\Controllers\DashboardController;
+use App\Modules\FIN\Presentation\Http\Controllers\FinanceController;
+use App\Modules\MDM\Presentation\Http\Controllers\MasterDataController;
+use App\Modules\OMS\Presentation\Http\Controllers\ShipmentController;
+use App\Modules\PublicSite\Presentation\Http\Controllers\PublicTrackingController;
+use App\Modules\TMS\Presentation\Http\Controllers\ManifestController;
+use App\Modules\WMS\Presentation\Http\Controllers\InventoryController;
+use Illuminate\Support\Facades\Route;
+
+// Public Website & Multi-AWB Tracking (FR-TRK-01)
+Route::get('/', [PublicTrackingController::class, 'welcome'])->name('home');
+Route::get('/tracking', [PublicTrackingController::class, 'track'])->name('public.tracking');
+
+// Authenticated ERP Workspace (Pache Logistic)
+Route::middleware(['auth', 'verified'])->group(function (): void {
+    Route::get('/dashboard', [DashboardController::class, 'index'])->name('dashboard');
+    Route::get('/api/erp/search', [DashboardController::class, 'globalSearch'])->name('erp.search');
+
+    // OMS — Order Management System (Strictly Non-COD)
+    Route::prefix('oms')->name('oms.')->group(function (): void {
+        Route::get('/shipments', [ShipmentController::class, 'index'])->name('shipments.index');
+        Route::get('/shipments/create', [ShipmentController::class, 'create'])->name('shipments.create');
+        Route::post('/shipments', [ShipmentController::class, 'store'])->name('shipments.store');
+        Route::get('/shipments/{awb}', [ShipmentController::class, 'show'])->name('shipments.show');
+        Route::get('/shipments/{awb}/label', [ShipmentController::class, 'label'])->name('shipments.label');
+        Route::post('/shipments/{awb}/confirm-payment', [ShipmentController::class, 'confirmPayment'])->name('shipments.confirm-payment');
+        Route::post('/shipments/{awb}/transition', [ShipmentController::class, 'transitionStatus'])->name('shipments.transition');
+        Route::post('/shipments/{awb}/epod', [ShipmentController::class, 'submitEpod'])->name('shipments.epod');
+    });
+
+    // WMS — Warehouse Management & Immutable Inventory Ledger
+    Route::prefix('wms')->name('wms.')->group(function (): void {
+        Route::get('/inventory', [InventoryController::class, 'index'])->name('inventory.index');
+        Route::post('/inventory/mutate', [InventoryController::class, 'mutate'])->name('inventory.mutate');
+    });
+
+    // TMS — Transportation, Manifests & Scan Bagging
+    Route::prefix('tms')->name('tms.')->group(function (): void {
+        Route::get('/manifests', [ManifestController::class, 'index'])->name('manifests.index');
+        Route::post('/manifests', [ManifestController::class, 'store'])->name('manifests.store');
+        Route::post('/manifests/{manifest}/scan', [ManifestController::class, 'scanBagging'])->name('manifests.scan');
+        Route::post('/manifests/{manifest}/depart', [ManifestController::class, 'depart'])->name('manifests.depart');
+        Route::post('/manifests/{manifest}/arrive', [ManifestController::class, 'arrive'])->name('manifests.arrive');
+    });
+
+    // FIN — Finance Non-COD (Cash Loket, Online Payment PG, & B2B TOP Auto-Invoicing)
+    Route::prefix('finance')->name('finance.')->group(function (): void {
+        Route::get('/', [FinanceController::class, 'index'])->name('index');
+        Route::post('/invoices/generate', [FinanceController::class, 'generateInvoice'])->name('invoices.generate');
+        Route::post('/invoices/{invoice}/mark-paid', [FinanceController::class, 'markPaid'])->name('invoices.mark-paid');
+    });
+
+    // MDM — Master Data (Multi-Branch, Customers TOP, Rate Engine)
+    Route::prefix('master')->name('master.')->group(function (): void {
+        Route::get('/', [MasterDataController::class, 'index'])->name('index');
+        Route::post('/customers', [MasterDataController::class, 'storeCustomer'])->name('customers.store');
+        Route::post('/tariffs', [MasterDataController::class, 'storeTariff'])->name('tariffs.store');
+        Route::post('/switch-branch', [MasterDataController::class, 'switchBranch'])->name('switch-branch');
+    });
+});
+
+require __DIR__.'/settings.php';
