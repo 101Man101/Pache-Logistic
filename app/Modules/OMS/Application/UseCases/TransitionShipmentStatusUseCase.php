@@ -5,14 +5,21 @@ declare(strict_types=1);
 namespace App\Modules\OMS\Application\UseCases;
 
 use App\Models\Shipment;
-use App\Models\TrackingLog;
 use App\Modules\OMS\Domain\Exceptions\InvalidStatusTransitionException;
 use App\Modules\OMS\Domain\Exceptions\UnpaidShipmentDispatchException;
+use App\Modules\OMS\Domain\Repositories\ShipmentRepository;
+use App\Modules\Shared\Domain\Contracts\TrackingLogger;
+use App\Modules\Shared\Domain\Contracts\TransactionManager;
 use App\Modules\Shared\Domain\Enums\ShipmentStatus;
-use Illuminate\Support\Facades\DB;
 
 final readonly class TransitionShipmentStatusUseCase
 {
+    public function __construct(
+        private TransactionManager $transactions,
+        private ShipmentRepository $shipments,
+        private TrackingLogger $trackingLogger,
+    ) {}
+
     public function execute(
         Shipment $shipment,
         ShipmentStatus $nextStatus,
@@ -21,9 +28,8 @@ final readonly class TransitionShipmentStatusUseCase
         ?int $branchId = null,
         ?int $actorId = null,
     ): Shipment {
-        return DB::transaction(function () use ($shipment, $nextStatus, $location, $description, $branchId, $actorId): Shipment {
-            /** @var Shipment $locked */
-            $locked = Shipment::query()->lockForUpdate()->findOrFail($shipment->id);
+        return $this->transactions->run(function () use ($shipment, $nextStatus, $location, $description, $branchId, $actorId): Shipment {
+            $locked = $this->shipments->findForUpdateOrFail($shipment->id);
 
             // BR-03: Strict Shipment State Machine
             if (! $locked->status->canTransitionTo($nextStatus)) {
@@ -40,15 +46,14 @@ final readonly class TransitionShipmentStatusUseCase
                 'delivered_at' => $nextStatus === ShipmentStatus::DELIVERED ? now() : $locked->delivered_at,
             ]);
 
-            TrackingLog::query()->create([
-                'shipment_id' => $locked->id,
-                'branch_id' => $branchId ?? $locked->origin_branch_id,
-                'status' => $nextStatus->value,
-                'location' => $location,
-                'description' => $description,
-                'actor_id' => $actorId,
-                'created_at' => now(),
-            ]);
+            $this->trackingLogger->record(
+                shipment: $locked,
+                status: $nextStatus,
+                location: $location,
+                description: $description,
+                branchId: $branchId ?? $locked->origin_branch_id,
+                actorId: $actorId,
+            );
 
             return $locked->refresh();
         });

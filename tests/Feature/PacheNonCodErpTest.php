@@ -10,9 +10,13 @@ use App\Models\Driver;
 use App\Models\Manifest;
 use App\Models\Product;
 use App\Models\Shipment;
+use App\Models\ShipmentCharge;
 use App\Models\StorageBin;
+use App\Models\Surcharge;
+use App\Models\Tariff;
 use App\Models\User;
 use App\Models\Vehicle;
+use App\Models\Vendor;
 use App\Models\Warehouse;
 use App\Modules\Shared\Domain\Enums\PaymentMethod;
 use App\Modules\Shared\Domain\Enums\PaymentStatus;
@@ -201,5 +205,152 @@ class PacheNonCodErpTest extends TestCase
         // Ensure dashboard loads cleanly
         $this->actingAs($admin)->get('/dashboard')->assertOk();
         $this->assertEquals(ShipmentStatus::DELIVERED, Shipment::query()->where('awb_number', 'PCH-SBY-261121-00005')->firstOrFail()->status);
+    }
+
+    public function test_rate_settings_surcharge_vendor_and_add_charge_workflow(): void
+    {
+        /** @var User $admin */
+        $admin = User::query()->where('email', 'admin@pachelogistic.id')->firstOrFail();
+        $jkt = Branch::query()->where('code', 'JKT')->firstOrFail();
+        $sby = Branch::query()->where('code', 'SBY')->firstOrFail();
+        $cust = Customer::query()->where('code', 'CUST-RTL-001')->firstOrFail();
+
+        // 1. Configure route rate + route surcharge settings in MDM
+        $this->actingAs($admin)->post('/master/tariffs', [
+            'origin_branch_id' => $jkt->id,
+            'destination_branch_id' => $sby->id,
+            'service_type' => 'REG',
+            'volumetric_divisor' => 6000,
+            'min_weight_kg' => 1,
+            'rate_per_kg' => 20000,
+            'insurance_rate_pct' => 0.25,
+            'fuel_surcharge_pct' => 10,
+            'handling_fee' => 15000,
+            'heavy_weight_threshold_kg' => 15,
+            'heavy_weight_surcharge_per_kg' => 2000,
+            'sla_days' => 2,
+            'is_active' => true,
+        ])->assertSessionHas('success');
+
+        // 2. Create Vendor & Surcharge in MDM
+        $this->actingAs($admin)->post('/master/vendors', [
+            'code' => 'VND-TST-01',
+            'name' => 'PT Vendor Penguji Nusantara',
+            'type' => 'linehaul',
+            'phone' => '021-9988-7766',
+            'payment_terms_days' => 14,
+            'base_cost_per_kg' => 7000,
+        ])->assertSessionHas('success');
+
+        $this->actingAs($admin)->post('/master/surcharges', [
+            'code' => 'SUR-TST',
+            'name' => 'Packing Khusus Test',
+            'calc_mode' => 'fixed',
+            'amount' => 30000,
+        ])->assertSessionHas('success');
+
+        $vendor = Vendor::query()->where('code', 'VND-TST-01')->firstOrFail();
+        $surcharge = Surcharge::query()->where('code', 'SUR-TST')->firstOrFail();
+
+        // 3. Book shipment with 20 kg (> 15 kg heavy threshold), vendor, preset surcharge & add charge
+        // Base shipping = 20 * 20,000 = 400,000
+        // Route FSC (10%) = 40,000; Handling = 15,000; Heavy (5 kg * 2,000) = 10,000; Preset SUR-TST = 30,000 => Surcharge = 95,000
+        // Add Charge = 25,000
+        // Total = 400,000 + 95,000 + 25,000 = 520,000
+        $this->actingAs($admin)->post('/oms/shipments', [
+            'customer_id' => $cust->id,
+            'origin_branch_id' => $jkt->id,
+            'destination_branch_id' => $sby->id,
+            'vendor_id' => $vendor->id,
+            'vendor_awb_no' => 'VAWB-9910',
+            'vendor_cost' => 140000,
+            'shipper_name' => $cust->name,
+            'shipper_phone' => $cust->phone,
+            'shipper_address' => $cust->address,
+            'consignee_name' => 'Penerima Surcharge Test',
+            'consignee_phone' => '081277776666',
+            'consignee_address' => 'Surabaya',
+            'service_type' => 'REG',
+            'payment_method' => PaymentMethod::ONLINE->value,
+            'surcharge_ids' => [$surcharge->id],
+            'additional_charges' => [
+                ['description' => 'Biaya Parkir Muat', 'amount' => 25000],
+            ],
+            'items' => [
+                ['description' => 'Mesin Kemasan', 'qty' => 1, 'actual_weight_kg' => 20, 'length_cm' => 30, 'width_cm' => 30, 'height_cm' => 30],
+            ],
+        ])->assertRedirect();
+
+        /** @var Shipment $shipment */
+        $shipment = Shipment::query()->latest('id')->firstOrFail();
+        $this->assertEquals($vendor->id, $shipment->vendor_id);
+        $this->assertEquals('VAWB-9910', $shipment->vendor_awb_no);
+        $this->assertEquals(140000.0, (float) $shipment->vendor_cost);
+        $this->assertEquals(400000.0, (float) $shipment->shipping_cost);
+        $this->assertEquals(95000.0, (float) $shipment->surcharge_cost);
+        $this->assertEquals(25000.0, (float) $shipment->additional_charge_cost);
+        $this->assertEquals(520000.0, (float) $shipment->total_amount);
+
+        // 4. Post-booking Add Charge + Remove Charge
+        $this->actingAs($admin)->post("/oms/shipments/{$shipment->awb_number}/charges", [
+            'charge_type' => 'add_charge',
+            'description' => 'Biaya Tunggu Bongkar',
+            'amount' => 50000,
+        ])->assertSessionHas('success');
+
+        $shipment->refresh();
+        $this->assertEquals(75000.0, (float) $shipment->additional_charge_cost);
+        $this->assertEquals(570000.0, (float) $shipment->total_amount);
+
+        /** @var ShipmentCharge $added */
+        $added = $shipment->charges()->where('description', 'Biaya Tunggu Bongkar')->firstOrFail();
+        $this->actingAs($admin)->delete("/oms/shipments/{$shipment->awb_number}/charges/{$added->id}")
+            ->assertSessionHas('success');
+
+        $shipment->refresh();
+        $this->assertEquals(520000.0, (float) $shipment->total_amount);
+        $this->assertTrue(Tariff::query()->where('origin_branch_id', $jkt->id)->where('destination_branch_id', $sby->id)->where('service_type', 'REG')->exists());
+    }
+
+    public function test_rbac_blocks_unauthorized_roles_and_allows_authorized_modules(): void
+    {
+        $superAdmin = User::query()->where('email', 'admin@pachelogistic.id')->firstOrFail();
+        $oms = User::query()->where('email', 'oms@pachelogistic.id')->firstOrFail();
+        $wms = User::query()->where('email', 'wms@pachelogistic.id')->firstOrFail();
+        $tms = User::query()->where('email', 'tms@pachelogistic.id')->firstOrFail();
+        $kasir = User::query()->where('email', 'kasir@pachelogistic.id')->firstOrFail();
+
+        $this->actingAs($superAdmin)->get('/oms/shipments/create')->assertOk();
+        $this->actingAs($superAdmin)->get('/wms/inventory')->assertOk();
+        $this->actingAs($superAdmin)->get('/tms/manifests')->assertOk();
+        $this->actingAs($superAdmin)->get('/finance')->assertOk();
+        $this->actingAs($superAdmin)->get('/master')->assertOk();
+
+        $this->actingAs($oms)->get('/oms/shipments/create')->assertOk();
+        $this->actingAs($oms)->get('/master')->assertOk();
+        $this->actingAs($oms)->get('/wms/inventory')->assertForbidden();
+        $this->actingAs($oms)->get('/tms/manifests')->assertForbidden();
+        $this->actingAs($oms)->get('/finance')->assertForbidden();
+
+        $this->actingAs($wms)->get('/dashboard')->assertOk();
+        $this->actingAs($wms)->get('/wms/inventory')->assertOk();
+        $this->actingAs($wms)->get('/oms/shipments/create')->assertForbidden();
+        $this->actingAs($wms)->get('/tms/manifests')->assertForbidden();
+        $this->actingAs($wms)->get('/finance')->assertForbidden();
+        $this->actingAs($wms)->get('/master')->assertForbidden();
+
+        $this->actingAs($tms)->get('/tms/manifests')->assertOk();
+        $this->actingAs($tms)->get('/oms/shipments')->assertOk();
+        $this->actingAs($tms)->get('/oms/shipments/create')->assertForbidden();
+        $this->actingAs($tms)->get('/wms/inventory')->assertForbidden();
+        $this->actingAs($tms)->get('/finance')->assertForbidden();
+        $this->actingAs($tms)->get('/master')->assertForbidden();
+
+        $this->actingAs($kasir)->get('/finance')->assertOk();
+        $this->actingAs($kasir)->get('/master')->assertOk();
+        $this->actingAs($kasir)->get('/oms/shipments')->assertOk();
+        $this->actingAs($kasir)->get('/oms/shipments/create')->assertForbidden();
+        $this->actingAs($kasir)->get('/wms/inventory')->assertForbidden();
+        $this->actingAs($kasir)->get('/tms/manifests')->assertForbidden();
     }
 }

@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Models;
 
+use App\Modules\Shared\Domain\Enums\ManifestStatus;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
@@ -16,9 +17,11 @@ use Illuminate\Support\Carbon;
  * @property int $destination_branch_id
  * @property int $vehicle_id
  * @property int $driver_id
+ * @property int|null $vendor_id
  * @property string|null $seal_number
  * @property string $driver_advance_amount
- * @property string $status
+ * @property string $vendor_cost
+ * @property ManifestStatus $status
  * @property Carbon|null $departed_at
  * @property Carbon|null $arrived_at
  * @property int|null $created_by
@@ -31,8 +34,10 @@ class Manifest extends Model
         'destination_branch_id',
         'vehicle_id',
         'driver_id',
+        'vendor_id',
         'seal_number',
         'driver_advance_amount',
+        'vendor_cost',
         'status',
         'departed_at',
         'arrived_at',
@@ -45,6 +50,7 @@ class Manifest extends Model
     protected function casts(): array
     {
         return [
+            'status' => ManifestStatus::class,
             'departed_at' => 'datetime',
             'arrived_at' => 'datetime',
         ];
@@ -80,6 +86,14 @@ class Manifest extends Model
     public function driver(): BelongsTo
     {
         return $this->belongsTo(Driver::class);
+    }
+
+    /**
+     * @return BelongsTo<Vendor, $this>
+     */
+    public function vendor(): BelongsTo
+    {
+        return $this->belongsTo(Vendor::class);
     }
 
     /**

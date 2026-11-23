@@ -6,30 +6,37 @@ namespace App\Modules\TMS\Application\UseCases;
 
 use App\Models\Manifest;
 use App\Models\ManifestItem;
-use App\Models\Shipment;
-use App\Models\TrackingLog;
 use App\Modules\OMS\Domain\Exceptions\UnpaidShipmentDispatchException;
+use App\Modules\OMS\Domain\Repositories\ShipmentRepository;
+use App\Modules\Shared\Domain\Contracts\TrackingLogger;
+use App\Modules\Shared\Domain\Contracts\TransactionManager;
+use App\Modules\Shared\Domain\Enums\ManifestStatus;
 use App\Modules\Shared\Domain\Enums\ShipmentStatus;
+use App\Modules\TMS\Domain\Repositories\ManifestRepository;
 use DomainException;
-use Illuminate\Support\Facades\DB;
 
 /**
  * Scan Bagging into Manifest with BR-08 Non-COD Dispatch Gate & Route Check (FR-TMS-02).
  */
 final readonly class AssignShipmentToManifestUseCase
 {
+    public function __construct(
+        private TransactionManager $transactions,
+        private ManifestRepository $manifests,
+        private ShipmentRepository $shipments,
+        private TrackingLogger $trackingLogger,
+    ) {}
+
     public function execute(Manifest $manifest, string $awbNumber, ?int $actorId = null): ManifestItem
     {
-        return DB::transaction(function () use ($manifest, $awbNumber, $actorId): ManifestItem {
-            /** @var Manifest $lockedManifest */
-            $lockedManifest = Manifest::query()->with(['originBranch', 'destinationBranch'])->lockForUpdate()->findOrFail($manifest->id);
+        return $this->transactions->run(function () use ($manifest, $awbNumber, $actorId): ManifestItem {
+            $lockedManifest = $this->manifests->findForUpdateOrFail($manifest->id);
 
-            if ($lockedManifest->status !== 'open') {
+            if ($lockedManifest->status !== ManifestStatus::OPEN) {
                 throw new DomainException("Manifest {$lockedManifest->manifest_number} sudah diberangkatkan dan terkunci.");
             }
 
-            /** @var Shipment|null $shipment */
-            $shipment = Shipment::query()->where('awb_number', trim($awbNumber))->lockForUpdate()->first();
+            $shipment = $this->shipments->findByAwbForUpdate($awbNumber);
             if ($shipment === null) {
                 throw new DomainException("Resi {$awbNumber} tidak ditemukan di sistem Pache Logistic.");
             }
@@ -46,12 +53,7 @@ final readonly class AssignShipmentToManifestUseCase
                 );
             }
 
-            $existing = ManifestItem::query()
-                ->where('manifest_id', $lockedManifest->id)
-                ->where('shipment_id', $shipment->id)
-                ->first();
-
-            if ($existing !== null) {
+            if ($this->manifests->hasShipment($lockedManifest->id, $shipment->id)) {
                 throw new DomainException("Duplicate scan: Resi {$shipment->awb_number} sudah masuk dalam Manifest ini.");
             }
 
@@ -59,22 +61,16 @@ final readonly class AssignShipmentToManifestUseCase
                 $shipment->update(['status' => ShipmentStatus::ORIGIN_HUB]);
             }
 
-            /** @var ManifestItem $item */
-            $item = ManifestItem::query()->create([
-                'manifest_id' => $lockedManifest->id,
-                'shipment_id' => $shipment->id,
-                'scanned_at' => now(),
-            ]);
+            $item = $this->manifests->attachShipment($lockedManifest->id, $shipment->id);
 
-            TrackingLog::query()->create([
-                'shipment_id' => $shipment->id,
-                'branch_id' => $lockedManifest->origin_branch_id,
-                'status' => ShipmentStatus::ORIGIN_HUB->value,
-                'location' => "{$lockedManifest->originBranch?->name} — Sorting Hub",
-                'description' => "Paket di-scan masuk Manifest {$lockedManifest->manifest_number} menuju {$lockedManifest->destinationBranch?->name}.",
-                'actor_id' => $actorId,
-                'created_at' => now(),
-            ]);
+            $this->trackingLogger->record(
+                shipment: $shipment,
+                status: ShipmentStatus::ORIGIN_HUB,
+                location: "{$lockedManifest->originBranch?->name} — Sorting Hub",
+                description: "Paket di-scan masuk Manifest {$lockedManifest->manifest_number} menuju {$lockedManifest->destinationBranch?->name}.",
+                branchId: $lockedManifest->origin_branch_id,
+                actorId: $actorId,
+            );
 
             return $item;
         });

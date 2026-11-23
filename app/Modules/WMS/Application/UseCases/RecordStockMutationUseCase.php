@@ -5,15 +5,20 @@ declare(strict_types=1);
 namespace App\Modules\WMS\Application\UseCases;
 
 use App\Models\InventoryLedger;
-use App\Models\StorageBin;
+use App\Modules\Shared\Domain\Contracts\TransactionManager;
 use App\Modules\WMS\Domain\Exceptions\InsufficientBinStockException;
-use Illuminate\Support\Facades\DB;
+use App\Modules\WMS\Domain\Repositories\InventoryLedgerRepository;
 
 /**
  * Immutable Stock Ledger Mutation with Pessimistic Lock (BR-04 & FR-WMS-03).
  */
 final readonly class RecordStockMutationUseCase
 {
+    public function __construct(
+        private TransactionManager $transactions,
+        private InventoryLedgerRepository $ledger,
+    ) {}
+
     /**
      * @param  array{
      *     warehouse_id: int,
@@ -29,22 +34,11 @@ final readonly class RecordStockMutationUseCase
      */
     public function execute(array $payload, ?int $actorId = null): InventoryLedger
     {
-        return DB::transaction(function () use ($payload, $actorId): InventoryLedger {
-            /** @var StorageBin $bin */
-            $bin = StorageBin::query()->lockForUpdate()->findOrFail($payload['storage_bin_id']);
+        return $this->transactions->run(function () use ($payload, $actorId): InventoryLedger {
+            $bin = $this->ledger->lockBinOrFail($payload['storage_bin_id']);
+            $currentBalance = $this->ledger->latestBalanceForUpdate($payload['warehouse_id'], $bin->id, $payload['product_id']);
 
-            /** @var InventoryLedger|null $latest */
-            $latest = InventoryLedger::query()
-                ->where('warehouse_id', $payload['warehouse_id'])
-                ->where('storage_bin_id', $bin->id)
-                ->where('product_id', $payload['product_id'])
-                ->orderByDesc('id')
-                ->lockForUpdate()
-                ->first();
-
-            $currentBalance = $latest !== null ? $latest->balance_after : 0;
             $qty = abs($payload['quantity']);
-
             $change = match ($payload['movement_type']) {
                 'outbound' => -$qty,
                 'adjustment' => $payload['quantity'],
@@ -52,12 +46,11 @@ final readonly class RecordStockMutationUseCase
             };
 
             $balanceAfter = $currentBalance + $change;
-
             if ($balanceAfter < 0) {
                 throw InsufficientBinStockException::forBin($bin->code, $currentBalance, abs($change));
             }
 
-            return InventoryLedger::query()->create([
+            return $this->ledger->recordMutation([
                 'warehouse_id' => $payload['warehouse_id'],
                 'storage_bin_id' => $bin->id,
                 'product_id' => $payload['product_id'],

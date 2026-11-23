@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Models;
 
+use App\Modules\Shared\Domain\Enums\UserRole;
 use Database\Factories\UserFactory;
 use Illuminate\Contracts\Auth\MustVerifyEmail;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
@@ -22,7 +23,7 @@ use Laravel\Fortify\TwoFactorAuthenticatable;
  * @property int|null $branch_id
  * @property string $name
  * @property string $email
- * @property string $role
+ * @property UserRole $role
  * @property Carbon|null $email_verified_at
  * @property string $password
  * @property string|null $two_factor_secret
@@ -47,12 +48,18 @@ class User extends Authenticatable implements MustVerifyEmail, PasskeyUser
         return $this->belongsTo(Branch::class);
     }
 
+    public function hasAnyRole(UserRole ...$roles): bool
+    {
+        return in_array($this->role, $roles, true);
+    }
+
     /**
      * @return array<string, string>
      */
     protected function casts(): array
     {
         return [
+            'role' => UserRole::class,
             'email_verified_at' => 'datetime',
             'password' => 'hashed',
             /* @chisel-2fa */

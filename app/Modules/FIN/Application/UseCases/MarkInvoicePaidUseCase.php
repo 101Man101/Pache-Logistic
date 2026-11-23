@@ -4,17 +4,23 @@ declare(strict_types=1);
 
 namespace App\Modules\FIN\Application\UseCases;
 
-use App\Models\FinancialLedger;
 use App\Models\Invoice;
-use Illuminate\Support\Facades\DB;
+use App\Modules\FIN\Domain\Repositories\InvoiceRepository;
+use App\Modules\Shared\Domain\Contracts\FinancialLedgerRecorder;
+use App\Modules\Shared\Domain\Contracts\TransactionManager;
 
 final readonly class MarkInvoicePaidUseCase
 {
+    public function __construct(
+        private TransactionManager $transactions,
+        private InvoiceRepository $invoices,
+        private FinancialLedgerRecorder $ledgerRecorder,
+    ) {}
+
     public function execute(Invoice $invoice, ?int $actorId = null): Invoice
     {
-        return DB::transaction(function () use ($invoice, $actorId): Invoice {
-            /** @var Invoice $locked */
-            $locked = Invoice::query()->with('customer')->lockForUpdate()->findOrFail($invoice->id);
+        return $this->transactions->run(function () use ($invoice, $actorId): Invoice {
+            $locked = $this->invoices->findForUpdateOrFail($invoice->id);
 
             if ($locked->status === 'paid') {
                 return $locked;
@@ -25,18 +31,16 @@ final readonly class MarkInvoicePaidUseCase
                 'paid_at' => now(),
             ]);
 
-            FinancialLedger::query()->create([
-                'entry_code' => 'FIN-INV-'.now()->format('ymdHis').'-'.str_pad((string) $locked->id, 4, '0', STR_PAD_LEFT),
-                'branch_id' => null,
-                'channel' => 'top_invoice',
-                'direction' => 'credit',
-                'amount' => $locked->total_amount,
-                'reference_type' => 'invoice',
-                'reference_id' => $locked->id,
-                'description' => "Pelunasan Invoice B2B TOP {$locked->invoice_number} ({$locked->customer?->name})",
-                'actor_id' => $actorId,
-                'created_at' => now(),
-            ]);
+            $this->ledgerRecorder->recordCredit(
+                prefix: 'FIN-INV',
+                branchId: null,
+                channel: 'top_invoice',
+                amount: (float) $locked->total_amount,
+                referenceType: 'invoice',
+                referenceId: $locked->id,
+                description: "Pelunasan Invoice B2B TOP {$locked->invoice_number} ({$locked->customer?->name})",
+                actorId: $actorId,
+            );
 
             return $locked->refresh();
         });

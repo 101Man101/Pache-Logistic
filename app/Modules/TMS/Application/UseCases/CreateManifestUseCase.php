@@ -8,27 +8,36 @@ use App\Models\Branch;
 use App\Models\Driver;
 use App\Models\Manifest;
 use App\Models\Vehicle;
+use App\Modules\Shared\Domain\Contracts\TransactionManager;
+use App\Modules\Shared\Domain\Enums\ManifestStatus;
 use App\Modules\TMS\Domain\Exceptions\FleetComplianceException;
-use Illuminate\Support\Facades\DB;
+use App\Modules\TMS\Domain\Repositories\ManifestRepository;
 
 /**
  * Create Linehaul Manifest with BR-06 Vehicle/Driver Compliance Enforcement.
  */
 final readonly class CreateManifestUseCase
 {
+    public function __construct(
+        private TransactionManager $transactions,
+        private ManifestRepository $manifests,
+    ) {}
+
     /**
      * @param  array{
      *     origin_branch_id: int,
      *     destination_branch_id: int,
      *     vehicle_id: int,
      *     driver_id: int,
+     *     vendor_id?: int|null,
      *     seal_number?: string|null,
-     *     driver_advance_amount?: float
+     *     driver_advance_amount?: float,
+     *     vendor_cost?: float
      * }  $payload
      */
     public function execute(array $payload, ?int $actorId = null): Manifest
     {
-        return DB::transaction(function () use ($payload, $actorId): Manifest {
+        return $this->transactions->run(function () use ($payload, $actorId): Manifest {
             /** @var Vehicle $vehicle */
             $vehicle = Vehicle::query()->findOrFail($payload['vehicle_id']);
             /** @var Driver $driver */
@@ -50,23 +59,24 @@ final readonly class CreateManifestUseCase
             }
 
             $prefix = "MNF-{$origin->code}-{$dest->code}-".now()->format('ymd').'-';
-            $lastManifest = Manifest::query()
-                ->where('manifest_number', 'like', "{$prefix}%")
-                ->orderByDesc('manifest_number')
-                ->lockForUpdate()
-                ->value('manifest_number');
-            $seq = is_string($lastManifest) ? ((int) substr($lastManifest, -3) + 1) : 1;
+            $seq = $this->manifests->nextSequence($prefix);
             $manifestNumber = $prefix.str_pad((string) $seq, 3, '0', STR_PAD_LEFT);
 
-            return Manifest::query()->create([
+            $vendorId = isset($payload['vendor_id']) && (int) $payload['vendor_id'] > 0
+                ? (int) $payload['vendor_id']
+                : null;
+
+            return $this->manifests->create([
                 'manifest_number' => $manifestNumber,
                 'origin_branch_id' => $origin->id,
                 'destination_branch_id' => $dest->id,
                 'vehicle_id' => $vehicle->id,
                 'driver_id' => $driver->id,
+                'vendor_id' => $vendorId,
                 'seal_number' => $payload['seal_number'] ?? 'SEAL-'.strtoupper(substr(md5($manifestNumber), 0, 6)),
                 'driver_advance_amount' => (float) ($payload['driver_advance_amount'] ?? 0),
-                'status' => 'open',
+                'vendor_cost' => $vendorId !== null ? round(max(0.0, (float) ($payload['vendor_cost'] ?? 0)), 2) : 0,
+                'status' => ManifestStatus::OPEN,
                 'created_by' => $actorId,
             ]);
         });

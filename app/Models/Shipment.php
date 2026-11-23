@@ -20,6 +20,9 @@ use Illuminate\Support\Carbon;
  * @property int $customer_id
  * @property int $origin_branch_id
  * @property int $destination_branch_id
+ * @property int|null $vendor_id
+ * @property string|null $vendor_awb_no
+ * @property string $vendor_cost
  * @property string $shipper_name
  * @property string $shipper_phone
  * @property string $shipper_address
@@ -33,6 +36,8 @@ use Illuminate\Support\Carbon;
  * @property string $chargeable_weight_kg
  * @property string $shipping_cost
  * @property string $insurance_cost
+ * @property string $surcharge_cost
+ * @property string $additional_charge_cost
  * @property string $total_amount
  * @property PaymentMethod $payment_method
  * @property PaymentStatus $payment_status
@@ -56,6 +61,9 @@ class Shipment extends Model
         'customer_id',
         'origin_branch_id',
         'destination_branch_id',
+        'vendor_id',
+        'vendor_awb_no',
+        'vendor_cost',
         'shipper_name',
         'shipper_phone',
         'shipper_address',
@@ -69,6 +77,8 @@ class Shipment extends Model
         'chargeable_weight_kg',
         'shipping_cost',
         'insurance_cost',
+        'surcharge_cost',
+        'additional_charge_cost',
         'total_amount',
         'payment_method',
         'payment_status',
@@ -125,11 +135,27 @@ class Shipment extends Model
     }
 
     /**
+     * @return BelongsTo<Vendor, $this>
+     */
+    public function vendor(): BelongsTo
+    {
+        return $this->belongsTo(Vendor::class);
+    }
+
+    /**
      * @return HasMany<ShipmentItem, $this>
      */
     public function items(): HasMany
     {
         return $this->hasMany(ShipmentItem::class);
+    }
+
+    /**
+     * @return HasMany<ShipmentCharge, $this>
+     */
+    public function charges(): HasMany
+    {
+        return $this->hasMany(ShipmentCharge::class)->orderBy('id');
     }
 
     /**

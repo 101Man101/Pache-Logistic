@@ -8,17 +8,26 @@ use App\Http\Controllers\Controller;
 use App\Models\Branch;
 use App\Models\Customer;
 use App\Models\Shipment;
+use App\Models\ShipmentCharge;
+use App\Models\Surcharge;
 use App\Models\Tariff;
+use App\Models\Vendor;
+use App\Modules\OMS\Application\UseCases\AddShipmentChargeUseCase;
+use App\Modules\OMS\Application\UseCases\AssignVendorToShipmentUseCase;
 use App\Modules\OMS\Application\UseCases\BookShipmentUseCase;
 use App\Modules\OMS\Application\UseCases\ConfirmShipmentPaymentUseCase;
 use App\Modules\OMS\Application\UseCases\TransitionShipmentStatusUseCase;
-use App\Modules\Shared\Domain\Enums\PaymentMethod;
+use App\Modules\OMS\Domain\Repositories\ShipmentRepository;
+use App\Modules\OMS\Presentation\Http\Requests\AddShipmentChargeRequest;
+use App\Modules\OMS\Presentation\Http\Requests\AssignVendorRequest;
+use App\Modules\OMS\Presentation\Http\Requests\StoreShipmentRequest;
+use App\Modules\OMS\Presentation\Http\Requests\SubmitEpodRequest;
+use App\Modules\OMS\Presentation\Http\Requests\TransitionShipmentStatusRequest;
 use App\Modules\Shared\Domain\Enums\ShipmentStatus;
 use App\Modules\TMS\Application\UseCases\SubmitEpodUseCase;
 use DomainException;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
-use Illuminate\Validation\Rule;
 use Inertia\Inertia;
 use Inertia\Response;
 
@@ -84,7 +93,7 @@ final class ShipmentController extends Controller
         ]);
     }
 
-    public function create(): Response
+    public function create(ShipmentRepository $shipmentRepository): Response
     {
         $customers = Customer::query()
             ->where('is_active', true)
@@ -100,54 +109,68 @@ final class ShipmentController extends Controller
                 'is_top_enabled' => $c->is_top_enabled,
                 'top_days' => $c->top_days,
                 'credit_limit' => (float) $c->credit_limit,
-                'credit_exposure' => $c->currentCreditExposure(),
+                'credit_exposure' => $shipmentRepository->customerCreditExposure($c->id),
             ]);
 
-        $branches = Branch::query()
-            ->where('is_active', true)
-            ->orderBy('id')
-            ->get(['id', 'code', 'name', 'city']);
+        $branches = Branch::query()->where('is_active', true)->orderBy('id')->get(['id', 'code', 'name', 'city']);
 
         $tariffs = Tariff::query()
             ->where('is_active', true)
-            ->get(['origin_branch_id', 'destination_branch_id', 'service_type', 'volumetric_divisor', 'min_weight_kg', 'rate_per_kg', 'insurance_rate_pct', 'sla_days']);
+            ->get([
+                'origin_branch_id',
+                'destination_branch_id',
+                'service_type',
+                'volumetric_divisor',
+                'min_weight_kg',
+                'rate_per_kg',
+                'insurance_rate_pct',
+                'fuel_surcharge_pct',
+                'handling_fee',
+                'heavy_weight_threshold_kg',
+                'heavy_weight_surcharge_per_kg',
+                'sla_days',
+            ]);
+
+        $vendors = Vendor::query()
+            ->where('is_active', true)
+            ->orderBy('name')
+            ->get(['id', 'code', 'name', 'type', 'base_cost_per_kg'])
+            ->map(static fn (Vendor $v): array => [
+                'id' => $v->id,
+                'code' => $v->code,
+                'name' => $v->name,
+                'type' => $v->type->value,
+                'base_cost_per_kg' => (float) $v->base_cost_per_kg,
+            ]);
+
+        $surcharges = Surcharge::query()
+            ->where('is_active', true)
+            ->orderBy('code')
+            ->get(['id', 'code', 'name', 'calc_mode', 'amount', 'description'])
+            ->map(static fn (Surcharge $s): array => [
+                'id' => $s->id,
+                'code' => $s->code,
+                'name' => $s->name,
+                'calc_mode' => $s->calc_mode->value,
+                'amount' => (float) $s->amount,
+                'description' => $s->description,
+            ]);
 
         return Inertia::render('oms/Create', [
             'customers' => $customers,
             'branches' => $branches,
             'tariffs' => $tariffs,
+            'vendors' => $vendors,
+            'surcharges' => $surcharges,
         ]);
     }
 
-    public function store(Request $request, BookShipmentUseCase $bookShipment): RedirectResponse
+    public function store(StoreShipmentRequest $request, BookShipmentUseCase $bookShipment): RedirectResponse
     {
-        $validated = $request->validate([
-            'customer_id' => ['required', 'integer', 'exists:customers,id'],
-            'origin_branch_id' => ['required', 'integer', 'exists:branches,id'],
-            'destination_branch_id' => ['required', 'integer', 'exists:branches,id', 'different:origin_branch_id'],
-            'reference_no' => ['nullable', 'string', 'max:64'],
-            'shipper_name' => ['required', 'string', 'max:255'],
-            'shipper_phone' => ['required', 'string', 'max:30'],
-            'shipper_address' => ['required', 'string'],
-            'consignee_name' => ['required', 'string', 'max:255'],
-            'consignee_phone' => ['required', 'string', 'max:30'],
-            'consignee_address' => ['required', 'string'],
-            'service_type' => ['required', Rule::in(['REG', 'EXP', 'CRG'])],
-            // Strictly Non-COD validation — only online, cash, top accepted
-            'payment_method' => ['required', Rule::in(PaymentMethod::values())],
-            'declared_value' => ['nullable', 'numeric', 'min:0'],
-            'cash_received' => ['nullable', 'boolean'],
-            'items' => ['required', 'array', 'min:1'],
-            'items.*.description' => ['required', 'string', 'max:255'],
-            'items.*.qty' => ['required', 'integer', 'min:1'],
-            'items.*.actual_weight_kg' => ['required', 'numeric', 'min:0.1'],
-            'items.*.length_cm' => ['required', 'numeric', 'min:1'],
-            'items.*.width_cm' => ['required', 'numeric', 'min:1'],
-            'items.*.height_cm' => ['required', 'numeric', 'min:1'],
-        ]);
-
         try {
-            $shipment = $bookShipment->execute($validated, $request->user()?->id);
+            /** @var array{customer_id: int, origin_branch_id: int, destination_branch_id: int, vendor_id?: int|null, vendor_awb_no?: string|null, vendor_cost?: float|null, reference_no?: string|null, shipper_name: string, shipper_phone: string, shipper_address: string, consignee_name: string, consignee_phone: string, consignee_address: string, service_type: string, payment_method: string, declared_value?: float|null, cash_received?: bool|null, surcharge_ids?: list<int>, additional_charges?: list<array{description: string, amount: float, notes?: string|null}>, items: list<array{description: string, qty: int, actual_weight_kg: float, length_cm: float, width_cm: float, height_cm: float}>} $payload */
+            $payload = $request->validated();
+            $shipment = $bookShipment->execute($payload, $request->user()?->id);
         } catch (DomainException $e) {
             return back()->withInput()->with('error', $e->getMessage());
         }
@@ -160,9 +183,34 @@ final class ShipmentController extends Controller
     {
         /** @var Shipment $shipment */
         $shipment = Shipment::query()
-            ->with(['customer', 'originBranch', 'destinationBranch', 'items', 'trackingLogs'])
+            ->with(['customer', 'originBranch', 'destinationBranch', 'vendor', 'items', 'charges', 'trackingLogs', 'invoiceLine'])
             ->where('awb_number', $awb)
             ->firstOrFail();
+
+        $activeVendors = Vendor::query()
+            ->where('is_active', true)
+            ->orderBy('name')
+            ->get(['id', 'code', 'name', 'type', 'base_cost_per_kg'])
+            ->map(static fn (Vendor $v): array => [
+                'id' => $v->id,
+                'code' => $v->code,
+                'name' => $v->name,
+                'type' => $v->type->value,
+                'base_cost_per_kg' => (float) $v->base_cost_per_kg,
+            ]);
+
+        $activeSurcharges = Surcharge::query()
+            ->where('is_active', true)
+            ->orderBy('code')
+            ->get(['id', 'code', 'name', 'calc_mode', 'amount', 'description'])
+            ->map(static fn (Surcharge $s): array => [
+                'id' => $s->id,
+                'code' => $s->code,
+                'name' => $s->name,
+                'calc_mode' => $s->calc_mode->value,
+                'amount' => (float) $s->amount,
+                'description' => $s->description,
+            ]);
 
         return Inertia::render('oms/Show', [
             'shipment' => [
@@ -173,6 +221,15 @@ final class ShipmentController extends Controller
                 'customer_top_days' => $shipment->customer->top_days ?? 0,
                 'origin' => $shipment->originBranch ? "{$shipment->originBranch->name} ({$shipment->originBranch->code})" : '-',
                 'destination' => $shipment->destinationBranch ? "{$shipment->destinationBranch->name} ({$shipment->destinationBranch->code})" : '-',
+                'vendor_id' => $shipment->vendor_id,
+                'vendor' => $shipment->vendor ? [
+                    'id' => $shipment->vendor->id,
+                    'code' => $shipment->vendor->code,
+                    'name' => $shipment->vendor->name,
+                    'type' => $shipment->vendor->type->value,
+                ] : null,
+                'vendor_awb_no' => $shipment->vendor_awb_no,
+                'vendor_cost' => (float) $shipment->vendor_cost,
                 'shipper_name' => $shipment->shipper_name,
                 'shipper_phone' => $shipment->shipper_phone,
                 'shipper_address' => $shipment->shipper_address,
@@ -186,7 +243,10 @@ final class ShipmentController extends Controller
                 'chargeable_weight_kg' => (float) $shipment->chargeable_weight_kg,
                 'shipping_cost' => (float) $shipment->shipping_cost,
                 'insurance_cost' => (float) $shipment->insurance_cost,
+                'surcharge_cost' => (float) $shipment->surcharge_cost,
+                'additional_charge_cost' => (float) $shipment->additional_charge_cost,
                 'total_amount' => (float) $shipment->total_amount,
+                'is_invoiced' => $shipment->invoiceLine !== null,
                 'payment_method' => $shipment->payment_method->value,
                 'payment_method_label' => $shipment->payment_method->label(),
                 'payment_status' => $shipment->payment_status->value,
@@ -216,6 +276,17 @@ final class ShipmentController extends Controller
                     'width_cm' => (float) $i->width_cm,
                     'height_cm' => (float) $i->height_cm,
                 ])->all(),
+                'charges' => $shipment->charges->map(static fn (ShipmentCharge $c): array => [
+                    'id' => $c->id,
+                    'charge_type' => $c->charge_type,
+                    'code' => $c->code,
+                    'description' => $c->description,
+                    'calc_mode' => $c->calc_mode,
+                    'rate_value' => (float) $c->rate_value,
+                    'quantity' => (float) $c->quantity,
+                    'amount' => (float) $c->amount,
+                    'notes' => $c->notes,
+                ])->all(),
                 'logs' => $shipment->trackingLogs->map(static fn ($l): array => [
                     'id' => $l->id,
                     'status' => $l->status,
@@ -224,6 +295,8 @@ final class ShipmentController extends Controller
                     'created_at' => $l->created_at->format('d M Y, H:i'),
                 ])->all(),
             ],
+            'activeVendors' => $activeVendors,
+            'activeSurcharges' => $activeSurcharges,
         ]);
     }
 
@@ -274,17 +347,15 @@ final class ShipmentController extends Controller
         return back()->with('success', "Pembayaran resi {$awb} terkonfirmasi LUNAS (PAID). Paket siap diberangkatkan.");
     }
 
-    public function transitionStatus(Request $request, string $awb, TransitionShipmentStatusUseCase $useCase): RedirectResponse
-    {
+    public function transitionStatus(
+        TransitionShipmentStatusRequest $request,
+        string $awb,
+        TransitionShipmentStatusUseCase $useCase,
+    ): RedirectResponse {
         $shipment = Shipment::query()->with(['originBranch', 'destinationBranch'])->where('awb_number', $awb)->firstOrFail();
+        $validated = $request->validated();
 
-        $validated = $request->validate([
-            'status' => ['required', Rule::in(array_map(static fn (ShipmentStatus $s): string => $s->value, ShipmentStatus::cases()))],
-            'location' => ['nullable', 'string', 'max:255'],
-            'description' => ['nullable', 'string', 'max:500'],
-        ]);
-
-        $nextStatus = ShipmentStatus::from($validated['status']);
+        $nextStatus = ShipmentStatus::from((string) $validated['status']);
         $defaultLocation = match ($nextStatus) {
             ShipmentStatus::DESTINATION_HUB, ShipmentStatus::OUT_FOR_DELIVERY, ShipmentStatus::DELIVERED => $shipment->destinationBranch->name ?? 'Destination Hub',
             default => $shipment->originBranch->name ?? 'Origin Hub',
@@ -306,22 +377,15 @@ final class ShipmentController extends Controller
         return back()->with('success', "Status resi {$awb} diperbarui ke {$nextStatus->label()}.");
     }
 
-    public function submitEpod(Request $request, string $awb, SubmitEpodUseCase $useCase): RedirectResponse
+    public function submitEpod(SubmitEpodRequest $request, string $awb, SubmitEpodUseCase $useCase): RedirectResponse
     {
         $shipment = Shipment::query()->where('awb_number', $awb)->firstOrFail();
-
-        $validated = $request->validate([
-            'receiver_name' => ['required', 'string', 'max:150'],
-            'receiver_relation' => ['required', 'string', 'max:60'],
-            'latitude' => ['required', 'numeric', 'between:-90,90'],
-            'longitude' => ['required', 'numeric', 'between:-180,180'],
-            'notes' => ['nullable', 'string', 'max:500'],
-        ]);
+        $validated = $request->validated();
 
         try {
             $useCase->execute($shipment, [
-                'receiver_name' => $validated['receiver_name'],
-                'receiver_relation' => $validated['receiver_relation'],
+                'receiver_name' => (string) $validated['receiver_name'],
+                'receiver_relation' => (string) $validated['receiver_relation'],
                 'latitude' => (float) $validated['latitude'],
                 'longitude' => (float) $validated['longitude'],
                 'notes' => $validated['notes'] ?? null,
@@ -331,5 +395,60 @@ final class ShipmentController extends Controller
         }
 
         return back()->with('success', "e-POD Non-COD resi {$awb} tersimpan. Status menjadi Delivered.");
+    }
+
+    public function addCharge(
+        AddShipmentChargeRequest $request,
+        string $awb,
+        AddShipmentChargeUseCase $useCase,
+    ): RedirectResponse {
+        $shipment = Shipment::query()->where('awb_number', $awb)->firstOrFail();
+        $validated = $request->validated();
+
+        try {
+            $charge = $useCase->add($shipment, [
+                'surcharge_id' => isset($validated['surcharge_id']) ? (int) $validated['surcharge_id'] : null,
+                'charge_type' => $validated['charge_type'] ?? 'add_charge',
+                'description' => $validated['description'] ?? null,
+                'amount' => isset($validated['amount']) ? (float) $validated['amount'] : null,
+                'notes' => $validated['notes'] ?? null,
+            ], $request->user()?->id);
+        } catch (DomainException $e) {
+            return back()->with('error', $e->getMessage());
+        }
+
+        return back()->with('success', "Biaya {$charge->description} berhasil ditambahkan ke {$awb}.");
+    }
+
+    public function removeCharge(string $awb, ShipmentCharge $charge, AddShipmentChargeUseCase $useCase): RedirectResponse
+    {
+        $shipment = Shipment::query()->where('awb_number', $awb)->firstOrFail();
+
+        try {
+            $useCase->remove($shipment, $charge);
+        } catch (DomainException $e) {
+            return back()->with('error', $e->getMessage());
+        }
+
+        return back()->with('success', "Item biaya {$charge->description} dihapus dari {$awb}.");
+    }
+
+    public function assignVendor(
+        AssignVendorRequest $request,
+        string $awb,
+        AssignVendorToShipmentUseCase $useCase,
+    ): RedirectResponse {
+        $shipment = Shipment::query()->where('awb_number', $awb)->firstOrFail();
+        $validated = $request->validated();
+
+        $vendor = $useCase->execute(
+            shipment: $shipment,
+            vendorId: isset($validated['vendor_id']) ? (int) $validated['vendor_id'] : null,
+            vendorAwbNo: $validated['vendor_awb_no'] ?? null,
+            vendorCost: (float) ($validated['vendor_cost'] ?? 0),
+            actorId: $request->user()?->id,
+        );
+
+        return back()->with('success', $vendor !== null ? "Vendor {$vendor->name} ditugaskan ke {$awb}." : "Vendor dilepas dari {$awb}.");
     }
 }

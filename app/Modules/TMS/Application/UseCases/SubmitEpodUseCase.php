@@ -5,17 +5,24 @@ declare(strict_types=1);
 namespace App\Modules\TMS\Application\UseCases;
 
 use App\Models\Shipment;
-use App\Models\TrackingLog;
 use App\Modules\OMS\Domain\Exceptions\UnpaidShipmentDispatchException;
+use App\Modules\OMS\Domain\Repositories\ShipmentRepository;
+use App\Modules\Shared\Domain\Contracts\TrackingLogger;
+use App\Modules\Shared\Domain\Contracts\TransactionManager;
 use App\Modules\Shared\Domain\Enums\ShipmentStatus;
 use DomainException;
-use Illuminate\Support\Facades\DB;
 
 /**
  * Mandatory Digital e-POD Submission (BR-07) — Strictly Non-COD (Zero Cash Collection).
  */
 final readonly class SubmitEpodUseCase
 {
+    public function __construct(
+        private TransactionManager $transactions,
+        private ShipmentRepository $shipments,
+        private TrackingLogger $trackingLogger,
+    ) {}
+
     /**
      * @param  array{
      *     receiver_name: string,
@@ -28,9 +35,8 @@ final readonly class SubmitEpodUseCase
      */
     public function execute(Shipment $shipment, array $payload, ?int $actorId = null): Shipment
     {
-        return DB::transaction(function () use ($shipment, $payload, $actorId): Shipment {
-            /** @var Shipment $locked */
-            $locked = Shipment::query()->with('destinationBranch')->lockForUpdate()->findOrFail($shipment->id);
+        return $this->transactions->run(function () use ($shipment, $payload, $actorId): Shipment {
+            $locked = $this->shipments->findForUpdateOrFail($shipment->id);
 
             if (! $locked->payment_status->isClearedForDispatch()) {
                 throw UnpaidShipmentDispatchException::forAwb($locked->awb_number);
@@ -51,17 +57,16 @@ final readonly class SubmitEpodUseCase
                 'epod_photo_url' => $payload['photo_url'] ?? '/images/epod-verified.svg',
             ]);
 
-            TrackingLog::query()->create([
-                'shipment_id' => $locked->id,
-                'branch_id' => $locked->destination_branch_id,
-                'status' => ShipmentStatus::DELIVERED->value,
-                'location' => "{$locked->destinationBranch?->city} (GPS {$payload['latitude']}, {$payload['longitude']})",
-                'description' => "Paket diterima oleh {$payload['receiver_name']} ({$payload['receiver_relation']}) — e-POD Non-COD terverifikasi.",
-                'latitude' => $payload['latitude'],
-                'longitude' => $payload['longitude'],
-                'actor_id' => $actorId,
-                'created_at' => now(),
-            ]);
+            $this->trackingLogger->record(
+                shipment: $locked,
+                status: ShipmentStatus::DELIVERED,
+                location: "{$locked->destinationBranch?->city} (GPS {$payload['latitude']}, {$payload['longitude']})",
+                description: "Paket diterima oleh {$payload['receiver_name']} ({$payload['receiver_relation']}) — e-POD Non-COD terverifikasi.",
+                branchId: $locked->destination_branch_id,
+                actorId: $actorId,
+                latitude: $payload['latitude'],
+                longitude: $payload['longitude'],
+            );
 
             return $locked->refresh();
         });

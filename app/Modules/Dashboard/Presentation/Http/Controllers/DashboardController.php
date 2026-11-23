@@ -84,7 +84,7 @@ final class DashboardController extends Controller
             ->map(static fn (Manifest $m): array => [
                 'type' => 'MANIFEST',
                 'title' => $m->manifest_number,
-                'subtitle' => 'Status: '.strtoupper($m->status),
+                'subtitle' => 'Status: '.strtoupper($m->status->value),
                 'href' => '/tms/manifests',
             ]);
 

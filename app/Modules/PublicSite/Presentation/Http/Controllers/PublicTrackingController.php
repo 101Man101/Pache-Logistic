@@ -6,6 +6,7 @@ namespace App\Modules\PublicSite\Presentation\Http\Controllers;
 
 use App\Http\Controllers\Controller;
 use App\Models\Branch;
+use App\Models\Customer;
 use App\Models\Shipment;
 use App\Models\Tariff;
 use Illuminate\Http\Request;
@@ -27,9 +28,84 @@ final class PublicTrackingController extends Controller
             ? Shipment::query()->orderBy('id')->limit(3)->pluck('awb_number')->all()
             : ['PCH-JKT-261121-00001', 'PCH-JKT-261121-00003', 'PCH-JKT-261121-00004'];
 
+        $branches = Schema::hasTable('branches')
+            ? Branch::query()
+                ->where('is_active', true)
+                ->orderBy('id')
+                ->get(['id', 'code', 'name', 'type', 'city'])
+                ->map(static fn (Branch $b): array => [
+                    'id' => $b->id,
+                    'code' => $b->code,
+                    'name' => $b->name,
+                    'type' => $b->type,
+                    'city' => $b->city,
+                ])
+                ->all()
+            : [];
+
+        $tariffs = Schema::hasTable('tariffs')
+            ? Tariff::query()
+                ->with(['originBranch:id,code,city', 'destinationBranch:id,code,city'])
+                ->where('is_active', true)
+                ->orderBy('origin_branch_id')
+                ->orderBy('destination_branch_id')
+                ->get()
+                ->map(static fn (Tariff $t): array => [
+                    'id' => $t->id,
+                    'origin_code' => $t->originBranch->code ?? '-',
+                    'origin_city' => $t->originBranch->city ?? '-',
+                    'destination_code' => $t->destinationBranch->code ?? '-',
+                    'destination_city' => $t->destinationBranch->city ?? '-',
+                    'service_type' => $t->service_type,
+                    'volumetric_divisor' => $t->volumetric_divisor,
+                    'min_weight_kg' => (float) $t->min_weight_kg,
+                    'rate_per_kg' => (float) $t->rate_per_kg,
+                    'sla_days' => $t->sla_days,
+                ])
+                ->all()
+            : [];
+
+        $sampleShipments = Schema::hasTable('shipments')
+            ? Shipment::query()
+                ->with(['originBranch:id,code,city', 'destinationBranch:id,code,city'])
+                ->orderBy('id')
+                ->limit(4)
+                ->get()
+                ->map(static fn (Shipment $s): array => [
+                    'awb_number' => $s->awb_number,
+                    'origin_code' => $s->originBranch->code ?? '-',
+                    'destination_code' => $s->destinationBranch->code ?? '-',
+                    'service_type' => $s->service_type,
+                    'chargeable_weight_kg' => (float) $s->chargeable_weight_kg,
+                    'payment_method_label' => $s->payment_method->shortLabel(),
+                    'payment_status_label' => $s->payment_status->label(),
+                    'status' => $s->status->value,
+                    'status_label' => $s->status->label(),
+                ])
+                ->all()
+            : [];
+
+        $clients = Schema::hasTable('customers')
+            ? Customer::query()
+                ->where('is_active', true)
+                ->orderBy('id')
+                ->limit(6)
+                ->get(['code', 'name', 'type'])
+                ->map(static fn (Customer $c): array => [
+                    'code' => $c->code,
+                    'name' => $c->name,
+                    'type' => $c->type,
+                ])
+                ->all()
+            : [];
+
         return Inertia::render('Welcome', [
             'stats' => $stats,
             'sampleAwbs' => $sampleAwbs,
+            'branches' => $branches,
+            'tariffs' => $tariffs,
+            'sampleShipments' => $sampleShipments,
+            'clients' => $clients,
         ]);
     }
 

@@ -6,11 +6,9 @@ namespace App\Modules\FIN\Application\UseCases;
 
 use App\Models\Customer;
 use App\Models\Invoice;
-use App\Models\Shipment;
-use App\Modules\Shared\Domain\Enums\PaymentMethod;
-use App\Modules\Shared\Domain\Enums\ShipmentStatus;
+use App\Modules\FIN\Domain\Repositories\InvoiceRepository;
+use App\Modules\Shared\Domain\Contracts\TransactionManager;
 use DomainException;
-use Illuminate\Support\Facades\DB;
 
 /**
  * Automated B2B TOP Invoicing (FR-FIN-03):
@@ -18,9 +16,14 @@ use Illuminate\Support\Facades\DB;
  */
 final readonly class GenerateB2bInvoiceUseCase
 {
+    public function __construct(
+        private TransactionManager $transactions,
+        private InvoiceRepository $invoices,
+    ) {}
+
     public function execute(int $customerId, ?int $actorId = null): Invoice
     {
-        return DB::transaction(function () use ($customerId, $actorId): Invoice {
+        return $this->transactions->run(function () use ($customerId, $actorId): Invoice {
             /** @var Customer $customer */
             $customer = Customer::query()->lockForUpdate()->findOrFail($customerId);
 
@@ -28,14 +31,7 @@ final readonly class GenerateB2bInvoiceUseCase
                 throw new DomainException("Pelanggan {$customer->name} bukan pelanggan kontrak TOP B2B.");
             }
 
-            $shipments = Shipment::query()
-                ->where('customer_id', $customer->id)
-                ->where('payment_method', PaymentMethod::TOP->value)
-                ->where('status', ShipmentStatus::DELIVERED->value)
-                ->whereDoesntHave('invoiceLine')
-                ->lockForUpdate()
-                ->get();
-
+            $shipments = $this->invoices->unbilledDeliveredTopShipments($customer->id);
             if ($shipments->isEmpty()) {
                 throw new DomainException("Tidak ada resi TOP berstatus Delivered yang belum ditagih untuk {$customer->name}.");
             }
@@ -46,16 +42,10 @@ final readonly class GenerateB2bInvoiceUseCase
             $totalAmount = round($subtotal + $ppnAmount - $pph23Amount, 2);
 
             $prefix = 'INV-PCH-'.now()->format('Ym').'-';
-            $lastInvoice = Invoice::query()
-                ->where('invoice_number', 'like', "{$prefix}%")
-                ->orderByDesc('invoice_number')
-                ->lockForUpdate()
-                ->value('invoice_number');
-            $seq = is_string($lastInvoice) ? ((int) substr($lastInvoice, -4) + 1) : 1;
+            $seq = $this->invoices->nextSequence($prefix);
             $invoiceNumber = $prefix.str_pad((string) $seq, 4, '0', STR_PAD_LEFT);
 
-            /** @var Invoice $invoice */
-            $invoice = Invoice::query()->create([
+            return $this->invoices->createWithLines([
                 'invoice_number' => $invoiceNumber,
                 'customer_id' => $customer->id,
                 'period_start' => $shipments->min('created_at')?->toDateString() ?? now()->startOfMonth()->toDateString(),
@@ -67,16 +57,7 @@ final readonly class GenerateB2bInvoiceUseCase
                 'due_date' => now()->addDays(max(7, $customer->top_days))->toDateString(),
                 'status' => 'unpaid',
                 'created_by' => $actorId,
-            ]);
-
-            foreach ($shipments as $shipment) {
-                $invoice->lines()->create([
-                    'shipment_id' => $shipment->id,
-                    'amount' => $shipment->total_amount,
-                ]);
-            }
-
-            return $invoice->load(['customer', 'lines.shipment']);
+            ], $shipments);
         });
     }
 }

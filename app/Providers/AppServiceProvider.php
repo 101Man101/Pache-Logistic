@@ -2,6 +2,22 @@
 
 namespace App\Providers;
 
+use App\Modules\FIN\Domain\Repositories\InvoiceRepository;
+use App\Modules\FIN\Infrastructure\Persistence\EloquentInvoiceRepository;
+use App\Modules\MDM\Domain\Repositories\MasterDataRepository;
+use App\Modules\MDM\Infrastructure\Persistence\EloquentMasterDataRepository;
+use App\Modules\OMS\Domain\Repositories\ShipmentRepository;
+use App\Modules\OMS\Infrastructure\Persistence\EloquentShipmentRepository;
+use App\Modules\Shared\Domain\Contracts\FinancialLedgerRecorder;
+use App\Modules\Shared\Domain\Contracts\TrackingLogger;
+use App\Modules\Shared\Domain\Contracts\TransactionManager;
+use App\Modules\Shared\Infrastructure\Persistence\EloquentFinancialLedgerRecorder;
+use App\Modules\Shared\Infrastructure\Persistence\EloquentTrackingLogger;
+use App\Modules\Shared\Infrastructure\Persistence\LaravelTransactionManager;
+use App\Modules\TMS\Domain\Repositories\ManifestRepository;
+use App\Modules\TMS\Infrastructure\Persistence\EloquentManifestRepository;
+use App\Modules\WMS\Domain\Repositories\InventoryLedgerRepository;
+use App\Modules\WMS\Infrastructure\Persistence\EloquentInventoryLedgerRepository;
 use Carbon\CarbonImmutable;
 use Illuminate\Support\Facades\Date;
 use Illuminate\Support\Facades\DB;
@@ -15,7 +31,14 @@ class AppServiceProvider extends ServiceProvider
      */
     public function register(): void
     {
-        //
+        $this->app->bind(TransactionManager::class, LaravelTransactionManager::class);
+        $this->app->bind(TrackingLogger::class, EloquentTrackingLogger::class);
+        $this->app->bind(FinancialLedgerRecorder::class, EloquentFinancialLedgerRecorder::class);
+        $this->app->bind(ShipmentRepository::class, EloquentShipmentRepository::class);
+        $this->app->bind(InventoryLedgerRepository::class, EloquentInventoryLedgerRepository::class);
+        $this->app->bind(ManifestRepository::class, EloquentManifestRepository::class);
+        $this->app->bind(InvoiceRepository::class, EloquentInvoiceRepository::class);
+        $this->app->bind(MasterDataRepository::class, EloquentMasterDataRepository::class);
     }
 
     /**

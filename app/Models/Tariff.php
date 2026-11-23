@@ -16,6 +16,10 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
  * @property string $min_weight_kg
  * @property string $rate_per_kg
  * @property string $insurance_rate_pct
+ * @property string $fuel_surcharge_pct
+ * @property string $handling_fee
+ * @property string|null $heavy_weight_threshold_kg
+ * @property string $heavy_weight_surcharge_per_kg
  * @property int $sla_days
  * @property bool $is_active
  */
@@ -29,6 +33,10 @@ class Tariff extends Model
         'min_weight_kg',
         'rate_per_kg',
         'insurance_rate_pct',
+        'fuel_surcharge_pct',
+        'handling_fee',
+        'heavy_weight_threshold_kg',
+        'heavy_weight_surcharge_per_kg',
         'sla_days',
         'is_active',
     ];

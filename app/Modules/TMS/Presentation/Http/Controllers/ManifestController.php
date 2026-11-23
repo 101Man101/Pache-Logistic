@@ -9,15 +9,18 @@ use App\Models\Branch;
 use App\Models\Driver;
 use App\Models\Manifest;
 use App\Models\Shipment;
-use App\Models\TrackingLog;
 use App\Models\Vehicle;
+use App\Models\Vendor;
 use App\Modules\Shared\Domain\Enums\ShipmentStatus;
+use App\Modules\TMS\Application\UseCases\ArriveManifestUseCase;
 use App\Modules\TMS\Application\UseCases\AssignShipmentToManifestUseCase;
 use App\Modules\TMS\Application\UseCases\CreateManifestUseCase;
+use App\Modules\TMS\Application\UseCases\DepartManifestUseCase;
+use App\Modules\TMS\Presentation\Http\Requests\ScanBaggingRequest;
+use App\Modules\TMS\Presentation\Http\Requests\StoreManifestRequest;
 use DomainException;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\DB;
 use Inertia\Inertia;
 use Inertia\Response;
 
@@ -31,6 +34,7 @@ final class ManifestController extends Controller
                 'destinationBranch:id,code,name,city',
                 'vehicle:id,plate_number,type,capacity_kg',
                 'driver:id,name,phone',
+                'vendor:id,code,name',
                 'items.shipment:id,awb_number,chargeable_weight_kg,payment_method,payment_status,status',
             ])
             ->orderByDesc('created_at')
@@ -44,9 +48,11 @@ final class ManifestController extends Controller
                 'vehicle' => $m->vehicle ? "{$m->vehicle->plate_number} · {$m->vehicle->type}" : '-',
                 'capacity_kg' => (float) ($m->vehicle->capacity_kg ?? 0),
                 'driver_name' => $m->driver->name ?? '-',
+                'vendor_name' => $m->vendor->name ?? null,
+                'vendor_cost' => (float) $m->vendor_cost,
                 'seal_number' => $m->seal_number,
                 'driver_advance_amount' => (float) $m->driver_advance_amount,
-                'status' => $m->status,
+                'status' => $m->status->value,
                 'departed_at' => $m->departed_at?->format('d M Y, H:i'),
                 'arrived_at' => $m->arrived_at?->format('d M Y, H:i'),
                 'total_weight_kg' => (float) $m->items->sum(static fn ($i): float => (float) ($i->shipment->chargeable_weight_kg ?? 0)),
@@ -96,25 +102,30 @@ final class ManifestController extends Controller
                 'cleared' => $s->payment_status->isClearedForDispatch(),
             ]);
 
+        $vendors = Vendor::query()
+            ->where('is_active', true)
+            ->orderBy('name')
+            ->get(['id', 'code', 'name', 'type'])
+            ->map(static fn (Vendor $v): array => [
+                'id' => $v->id,
+                'code' => $v->code,
+                'name' => $v->name,
+                'type' => $v->type->value,
+            ]);
+
         return Inertia::render('tms/Index', [
             'manifests' => $manifests,
             'branches' => Branch::query()->where('is_active', true)->orderBy('id')->get(['id', 'code', 'name', 'city']),
             'vehicles' => $vehicles,
             'drivers' => $drivers,
+            'vendors' => $vendors,
             'readyShipments' => $readyShipments,
         ]);
     }
 
-    public function store(Request $request, CreateManifestUseCase $useCase): RedirectResponse
+    public function store(StoreManifestRequest $request, CreateManifestUseCase $useCase): RedirectResponse
     {
-        $validated = $request->validate([
-            'origin_branch_id' => ['required', 'integer', 'exists:branches,id'],
-            'destination_branch_id' => ['required', 'integer', 'exists:branches,id', 'different:origin_branch_id'],
-            'vehicle_id' => ['required', 'integer', 'exists:vehicles,id'],
-            'driver_id' => ['required', 'integer', 'exists:drivers,id'],
-            'seal_number' => ['nullable', 'string', 'max:40'],
-            'driver_advance_amount' => ['nullable', 'numeric', 'min:0'],
-        ]);
+        $validated = $request->validated();
 
         try {
             $manifest = $useCase->execute([
@@ -122,8 +133,10 @@ final class ManifestController extends Controller
                 'destination_branch_id' => (int) $validated['destination_branch_id'],
                 'vehicle_id' => (int) $validated['vehicle_id'],
                 'driver_id' => (int) $validated['driver_id'],
+                'vendor_id' => isset($validated['vendor_id']) ? (int) $validated['vendor_id'] : null,
                 'seal_number' => $validated['seal_number'] ?? null,
                 'driver_advance_amount' => (float) ($validated['driver_advance_amount'] ?? 0),
+                'vendor_cost' => (float) ($validated['vendor_cost'] ?? 0),
             ], $request->user()?->id);
         } catch (DomainException $e) {
             return back()->with('error', $e->getMessage());
@@ -132,85 +145,33 @@ final class ManifestController extends Controller
         return back()->with('success', "Manifest {$manifest->manifest_number} berhasil dibuat. Siap untuk Scan Bagging.");
     }
 
-    public function scanBagging(Request $request, Manifest $manifest, AssignShipmentToManifestUseCase $useCase): RedirectResponse
-    {
-        $validated = $request->validate([
-            'awb_number' => ['required', 'string', 'max:40'],
-        ]);
+    public function scanBagging(
+        ScanBaggingRequest $request,
+        Manifest $manifest,
+        AssignShipmentToManifestUseCase $useCase,
+    ): RedirectResponse {
+        $awbNumber = (string) $request->validated('awb_number');
 
         try {
-            $useCase->execute($manifest, $validated['awb_number'], $request->user()?->id);
+            $useCase->execute($manifest, $awbNumber, $request->user()?->id);
         } catch (DomainException $e) {
             return back()->with('error', $e->getMessage());
         }
 
-        return back()->with('success', "Scan Bagging sukses: {$validated['awb_number']} masuk ke {$manifest->manifest_number}.");
+        return back()->with('success', "Scan Bagging sukses: {$awbNumber} masuk ke {$manifest->manifest_number}.");
     }
 
-    public function depart(Request $request, Manifest $manifest): RedirectResponse
+    public function depart(Request $request, Manifest $manifest, DepartManifestUseCase $useCase): RedirectResponse
     {
-        DB::transaction(function () use ($manifest, $request): void {
-            $manifest->load(['items.shipment', 'originBranch', 'destinationBranch']);
-            if ($manifest->status !== 'open') {
-                return;
-            }
+        $updated = $useCase->execute($manifest, $request->user()?->id);
 
-            $manifest->update([
-                'status' => 'departed',
-                'departed_at' => now(),
-            ]);
-
-            foreach ($manifest->items as $item) {
-                if ($item->shipment === null) {
-                    continue;
-                }
-                $item->shipment->update(['status' => ShipmentStatus::IN_TRANSIT]);
-                TrackingLog::query()->create([
-                    'shipment_id' => $item->shipment->id,
-                    'branch_id' => $manifest->origin_branch_id,
-                    'status' => ShipmentStatus::IN_TRANSIT->value,
-                    'location' => "Linehaul {$manifest->originBranch?->city} → {$manifest->destinationBranch?->city}",
-                    'description' => "Diberangkatkan dengan Manifest {$manifest->manifest_number} (Segel {$manifest->seal_number}).",
-                    'actor_id' => $request->user()?->id,
-                    'created_at' => now(),
-                ]);
-            }
-        });
-
-        return back()->with('success', "Manifest {$manifest->manifest_number} diberangkatkan (InTransit).");
+        return back()->with('success', "Manifest {$updated->manifest_number} diberangkatkan (InTransit).");
     }
 
-    public function arrive(Request $request, Manifest $manifest): RedirectResponse
+    public function arrive(Request $request, Manifest $manifest, ArriveManifestUseCase $useCase): RedirectResponse
     {
-        DB::transaction(function () use ($manifest, $request): void {
-            $manifest->load(['items.shipment', 'destinationBranch']);
-            if ($manifest->status !== 'departed') {
-                return;
-            }
+        $updated = $useCase->execute($manifest, $request->user()?->id);
 
-            $manifest->update([
-                'status' => 'arrived',
-                'arrived_at' => now(),
-            ]);
-
-            foreach ($manifest->items as $item) {
-                $item->update(['unloaded_at' => now()]);
-                if ($item->shipment === null) {
-                    continue;
-                }
-                $item->shipment->update(['status' => ShipmentStatus::DESTINATION_HUB]);
-                TrackingLog::query()->create([
-                    'shipment_id' => $item->shipment->id,
-                    'branch_id' => $manifest->destination_branch_id,
-                    'status' => ShipmentStatus::DESTINATION_HUB->value,
-                    'location' => "{$manifest->destinationBranch?->name} ({$manifest->destinationBranch?->city})",
-                    'description' => "Manifest {$manifest->manifest_number} tiba di Hub tujuan & selesai unloading.",
-                    'actor_id' => $request->user()?->id,
-                    'created_at' => now(),
-                ]);
-            }
-        });
-
-        return back()->with('success', "Manifest {$manifest->manifest_number} tiba di Hub Tujuan (DestinationHub).");
+        return back()->with('success', "Manifest {$updated->manifest_number} tiba di Hub Tujuan (DestinationHub).");
     }
 }

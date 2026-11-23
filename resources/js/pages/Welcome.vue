@@ -2,23 +2,57 @@
 import { Head, Link, router } from '@inertiajs/vue3';
 import {
     ArrowRight,
-    ArrowUpRight,
-    Building2,
-    CheckCircle2,
-    CreditCard,
-    LayoutDashboard,
+    Clock,
+    Mail,
+    MapPin,
     Menu,
-    Package,
+    Minus,
+    Phone,
     Plus,
-    ReceiptText,
     Search,
-    ShieldCheck,
-    Truck,
-    Warehouse,
     X,
 } from '@lucide/vue';
-import { computed, ref } from 'vue';
+import { ref } from 'vue';
 import PacheLogo from '@/components/PacheLogo.vue';
+
+interface BranchRow {
+    id: number;
+    code: string;
+    name: string;
+    type: string;
+    city: string;
+}
+
+interface TariffRow {
+    id: number;
+    origin_code: string;
+    origin_city: string;
+    destination_code: string;
+    destination_city: string;
+    service_type: string;
+    volumetric_divisor: number;
+    min_weight_kg: number;
+    rate_per_kg: number;
+    sla_days: number;
+}
+
+interface SampleShipmentRow {
+    awb_number: string;
+    origin_code: string;
+    destination_code: string;
+    service_type: string;
+    chargeable_weight_kg: number;
+    payment_method_label: string;
+    payment_status_label: string;
+    status: string;
+    status_label: string;
+}
+
+interface ClientRow {
+    code: string;
+    name: string;
+    type: string;
+}
 
 const props = defineProps<{
     stats: {
@@ -27,101 +61,15 @@ const props = defineProps<{
         shipments: number;
     };
     sampleAwbs: string[];
+    branches: BranchRow[];
+    tariffs: TariffRow[];
+    sampleShipments: SampleShipmentRow[];
+    clients: ClientRow[];
 }>();
 
 const mobileMenuOpen = ref(false);
 const quickAwb = ref(props.sampleAwbs[0] ?? 'PCH-JKT-261121-00001');
-const activeTab = ref<'dashboard' | 'oms' | 'wms' | 'tms' | 'finance'>('dashboard');
-
-const showcaseTabs = [
-    { id: 'dashboard', label: 'Dashboard KPI', icon: LayoutDashboard },
-    { id: 'oms', label: 'OMS Non-COD', icon: Package },
-    { id: 'wms', label: 'WMS Bin Ledger', icon: Warehouse },
-    { id: 'tms', label: 'TMS & e-POD', icon: Truck },
-    { id: 'finance', label: 'Finance TOP', icon: ReceiptText },
-] as const;
-
-const showcaseDetails = computed(() => {
-    const map = {
-        dashboard: {
-            eyebrow: 'RINGKASAN EKSEKUTIF REAL-TIME',
-            title: 'Seluruh cabang, armada, dan arus kas Non-COD dalam satu kanvas.',
-            desc: 'Pantau performa pengiriman, proporsi kanal pembayaran (Online QRIS/VA, Cash Loket, dan B2B TOP), serta peringatan kepatuhan dokumen STNK/KIR tanpa menunggu rekap manual.',
-            metrics: [
-                { label: 'Waktu Input & Cetak AWB', value: '< 15 detik' },
-                { label: 'Selisih Rekonsiliasi Kas', value: '0,0%' },
-                { label: 'Kepatuhan Bukti e-POD', value: '100%' },
-            ],
-            highlights: [
-                'Deferred KPI cards memuat cepat (< 300 ms) tanpa memblokir tabel utama',
-                'Peringatan otomatis BR-08 (resi pending) & BR-06 (STNK/KIR H-30)',
-                'Command Palette Ctrl+K untuk lompat instan ke AWB, Manifest, atau Pelanggan',
-            ],
-        },
-        oms: {
-            eyebrow: 'ORDER MANAGEMENT SYSTEM (STRICTLY NON-COD)',
-            title: 'Booking multi-koli reaktif dengan validasi tarif & plafon TOP otomatis.',
-            desc: 'Hitung berat aktual vs volumetrik (pembagi 6000/5000/4000) secara langsung sebelum AWB terbit. Sistem mengunci metode bayar hanya pada Online Payment, Cash Loket, dan B2B TOP.',
-            metrics: [
-                { label: 'Pembagi Volumetrik', value: '6000 / 5000 / 4000' },
-                { label: 'Metode Pembayaran', value: '3 Kanal Non-COD' },
-                { label: 'Format Label Termal', value: 'A6 100×150 mm' },
-            ],
-            highlights: [
-                'Generator nomor AWB atomik bebas bentrok (PCH-CABANG-TANGGAL-URUT)',
-                'Cek batas kredit BR-02 otomatis menolak order TOP di atas Credit Limit',
-                'Label A6 mencantumkan stempel NON-COD agar kurir tidak pernah menagih uang',
-            ],
-        },
-        wms: {
-            eyebrow: 'WAREHOUSE MANAGEMENT SYSTEM',
-            title: 'Topologi rak presisi dan buku besar stok anti-minus.',
-            desc: 'Kelola gudang multi-zona (Dry, Cold, Staging) sampai level Bin. Setiap inbound, picking FEFO/FIFO, dan adjustment dikunci dengan Pessimistic Lock di PostgreSQL.',
-            metrics: [
-                { label: 'Akurasi Stok per Bin', value: '>= 99,8%' },
-                { label: 'Aturan Alokasi', value: 'FIFO & FEFO' },
-                { label: 'Kejadian Stok Minus', value: '0' },
-            ],
-            highlights: [
-                'Immutable Inventory Ledger (BR-04): dilarang menghapus atau menimpa saldo',
-                'Mode Scanner-First USB/Bluetooth HID dengan umpan balik audio beep',
-                'Pelacakan nomor Batch dan tanggal kedaluwarsa untuk klien farmasi & F&B',
-            ],
-        },
-        tms: {
-            eyebrow: 'TRANSPORTATION & FLEET MANAGEMENT',
-            title: 'Scan bagging terkunci rute & bukti terima digital wajib GPS.',
-            desc: 'Konsolidasi ratusan resi ke Manifest linehaul tanpa menyentuh mouse. Non-COD Dispatch Gate (BR-08) otomatis memblokir paket yang belum lunas atau salah rute Hub.',
-            metrics: [
-                { label: 'Validasi Scan Barcode', value: '< 150 ms' },
-                { label: 'Blokir Resi Pending', value: 'Otomatis (BR-08)' },
-                { label: 'Syarat e-POD Kurir', value: 'Nama + GPS + Foto' },
-            ],
-            highlights: [
-                'Blokir penugasan armada bila STNK, Uji KIR, atau SIM supir kedaluwarsa (BR-06)',
-                'Pembaruan massal status InTransit saat Manifest diberangkatkan dengan segel',
-                'Kurir last-mile fokus 100% pada pengantaran dan e-POD tanpa beban uang tunai',
-            ],
-        },
-        finance: {
-            eyebrow: 'FINANCE NON-COD & AUTO-INVOICING B2B',
-            title: 'Rekonsiliasi QRIS/VA instan, kas loket terkunci, & invoice TOP dalam 1 klik.',
-            desc: 'Tidak ada lagi risiko kebocoran uang di tangan kurir. Kasir cabang menutup kas tunai loket harian, payment gateway melunasi order online otomatis, dan Finance menerbitkan tagihan TOP kolektif.',
-            metrics: [
-                { label: 'Durasi Terbit Invoice B2B', value: '< 15 menit' },
-                { label: 'Pajak Otomatis', value: 'PPN 11% · PPh 23 2%' },
-                { label: 'Termin Kredit B2B', value: 'Net 7 / 14 / 30 / 45' },
-            ],
-            highlights: [
-                'Penarikan otomatis seluruh resi TOP berstatus Delivered beserta rekap e-POD',
-                'Laporan Umur Piutang (AR Aging: Current, 1–30, 31–60, >60 hari)',
-                'Double-entry append-only Financial Ledger untuk audit 5+ tahun',
-            ],
-        },
-    };
-
-    return map[activeTab.value];
-});
+const openValueIndex = ref<number>(0);
 
 function submitQuickTrack(): void {
     const code = quickAwb.value.trim();
@@ -129,497 +77,797 @@ function submitQuickTrack(): void {
     router.get('/tracking', { awb: code });
 }
 
-const faqs = [
+function toggleValue(index: number): void {
+    openValueIndex.value = openValueIndex.value === index ? -1 : index;
+}
+
+const services = [
     {
-        q: 'Mengapa Pache Logistic menerapkan kebijakan Strictly Non-COD?',
-        a: 'Kebijakan Non-COD menghilangkan seluruh risiko kebocoran uang tunai di tangan kurir, mempercepat arus kas perusahaan, dan membuat proses serah terima di lokasi penerima jauh lebih cepat. Pengirim tetap memiliki tiga pilihan pembayaran fleksibel: Online Payment (QRIS/Virtual Account), Cash di loket asal saat drop-off, atau kredit berjangka (TOP) untuk mitra korporat B2B.',
+        title: 'ORDER & WAYBILL (OMS)',
+        image: '/images/landing/svc-oms.jpg',
+        alt: 'Sortir paket dan pemindaian barcode pada layanan OMS Pache Logistic',
+        desc: 'Booking pengiriman multi-koli dengan kalkulasi otomatis berat aktual vs volumetrik (BR-01), generator nomor AWB atomik, serta cetak label termal A6 bertanda Strictly Non-COD.',
+        meta: 'Divisor 6000 / 5000 / 4000',
     },
     {
-        q: 'Bagaimana cara kerja batas kredit (Credit Limit) pada skema B2B TOP?',
-        a: 'Setiap pelanggan korporat terdaftar memiliki plafon kredit dan termin pembayaran (Net 7, 14, 30, atau 45 hari). Saat booking resi TOP dibuat, mesin aturan BR-02 menghitung (Invoice Belum Lunas + Resi TOP Berjalan + Ongkir Baru). Bila melampaui plafon, sistem otomatis menahan penerbitan resi sampai ada pelunasan.',
+        title: 'GUDANG & LEDGER (WMS)',
+        image: '/images/landing/svc-wms.jpg',
+        alt: 'Rak penyimpanan gudang dan staf logistik memeriksa stok WMS Pache Logistic',
+        desc: 'Topologi gudang Dry dan Cold Storage hingga level bin dengan aturan alokasi FIFO/FEFO. Setiap mutasi stok dicatat pada buku besar append-only (BR-04) agar saldo tidak pernah minus.',
+        meta: 'Immutable Inventory Ledger',
     },
     {
-        q: 'Bagaimana perhitungan berat tagih (Chargeable Weight) di Pache Logistic?',
-        a: 'Sistem membandingkan total berat aktual timbangan dengan berat volumetrik menggunakan rumus (P × L × T) / Pembagi, dengan pembagi 6000 untuk Reguler, 5000 untuk Express, dan 4000 untuk Cargo. Nilai tertinggi dibulatkan ke atas secara transparan sebelum AWB dicetak.',
+        title: 'KARGO & MANIFEST (TMS)',
+        image: '/images/landing/svc-cargo.jpg',
+        alt: 'Terminal kontainer kargo antar-pulau dan linehaul Pache Logistic',
+        desc: 'Konsolidasi paket ke manifest linehaul lewat scan bagging cepat. Non-COD Dispatch Gate (BR-08) otomatis menahan paket belum lunas sebelum masuk ke armada.',
+        meta: 'Blokir Resi Pending Otomatis',
     },
     {
-        q: 'Apakah penerima paket dapat melacak resi tanpa membocorkan alamat lengkap ke publik?',
-        a: 'Ya. Halaman Cek Resi Publik Pache Logistic menyamarkan (PII Masking) nama, nomor telepon, dan alamat lengkap penerima secara default. Detail lengkap hanya terbuka apabila pemilik paket memasukkan 4 digit terakhir nomor HP penerima yang terdaftar pada resi.',
+        title: 'ARMADA & FINANCE TOP',
+        image: '/images/landing/svc-tms.jpg',
+        alt: 'Armada truk kargo Pache Logistic di jalur distribusi ekspres',
+        desc: 'Validasi kepatuhan STNK, Uji KIR, dan SIM supir (BR-06), bukti serah terima e-POD wajib koordinat GPS, serta auto-invoicing B2B TOP lengkap dengan perhitungan PPN 11% dan PPh 23.',
+        meta: 'QRIS/VA · Cash Loket · B2B TOP',
     },
 ];
+
+const coreValues = [
+    {
+        title: 'MISI STRICTLY NON-COD',
+        heading: 'Distribusi Nasional Tanpa Uang Tunai di Kurir.',
+        image: '/images/landing/svc-tms.jpg',
+        body: 'Pache Logistic menghilangkan seluruh risiko kebocoran setoran tunai pada kurir last-mile. Setiap resi wajib lunas via Online Payment (QRIS/VA), Cash di loket asal, atau lolos pagu kredit B2B Term of Payment (TOP).',
+        points: [
+            'Online Payment QRIS & Virtual Account',
+            'Cash Lunas di Cabang Asal',
+            'Kredit B2B TOP Net 7 / 14 / 30 / 45',
+            'Nol Selisih Rekonsiliasi Kas',
+        ],
+    },
+    {
+        title: 'VISI PRESISI OPERASIONAL',
+        heading: 'Satu Data Terkunci Dari Timbangan Hingga Faktur Pajak.',
+        image: '/images/landing/svc-wms.jpg',
+        body: 'Dari penimbangan koli pertama di loket asal, penyimpanan bin gudang berbasis batch FEFO/FIFO, hingga konsolidasi invoice bulanan klien korporat — seluruh modul berbagi satu database PostgreSQL transaksional.',
+        points: [
+            'Chargeable Weight Transparan (BR-01)',
+            'Buku Besar Stok Anti-Minus (BR-04)',
+            'Scan Bagging Barcode < 150 ms',
+            'Auto-Invoicing PPN 11% & PPh 23 2%',
+        ],
+    },
+    {
+        title: 'KEPATUHAN & PRIVASI DATA',
+        heading: 'Armada Layak Jalan & Penyamaran PII Pelacakan Publik.',
+        image: '/images/landing/svc-oms.jpg',
+        body: 'Sistem otomatis menolak penugasan kendaraan dengan STNK atau KIR kedaluwarsa (BR-06). Di halaman cek resi publik, identitas penerima disamarkan hingga 4 digit terakhir nomor HP terverifikasi.',
+        points: [
+            'Peringatan STNK/KIR/SIM H-30',
+            'e-POD Wajib Nama, Relasi & GPS',
+            'PII Masking Cek Resi Publik',
+            'Audit Trail Financial Ledger',
+        ],
+    },
+];
+
+function clientMonogram(name: string): string {
+    return name
+        .replace(/^(PT|CV)\s+/i, '')
+        .split(/\s+/)
+        .slice(0, 2)
+        .map((w) => w[0]?.toUpperCase() ?? '')
+        .join('');
+}
 </script>
 
 <template>
-    <Head title="ERP Logistik Terpadu Non-COD" />
+    <Head title="Fast Move" />
 
     <div class="pache-landing">
-        <!-- Sticky Frosted Header -->
-        <header class="pache-landing-header" id="top">
-            <div class="mx-auto flex max-w-[1360px] items-center justify-between gap-6 px-6 py-4 md:px-12 md:py-5">
-                <Link href="/" class="no-underline" aria-label="Beranda Pache Logistic">
-                    <PacheLogo />
-                </Link>
+        <!-- Hero Section with Overlaid Transparent Header (Matching Reference Structure, Pache Colors) -->
+        <section
+            class="relative isolate min-h-[540px] overflow-hidden bg-[#172b46] text-white md:min-h-[600px]"
+            id="top"
+        >
+            <img
+                src="/images/landing/hero-cargo.jpg"
+                alt="Terminal pelabuhan kargo dan armada logistik Pache Logistic"
+                class="absolute inset-0 h-full w-full object-cover object-center"
+            />
+            <!-- Cool Navy & Dark Gradient Scrim for WCAG Contrast -->
+            <div
+                class="absolute inset-0"
+                style="
+                    background: linear-gradient(
+                        180deg,
+                        rgba(17, 24, 39, 0.72) 0%,
+                        rgba(23, 43, 70, 0.45) 34%,
+                        rgba(23, 43, 70, 0.78) 100%
+                    );
+                "
+            />
 
-                <nav class="hidden items-center gap-7 md:flex" aria-label="Navigasi utama">
-                    <Link href="/tracking" class="text-[13px] font-medium text-[#596579] no-underline transition hover:text-[#2563eb]">
-                        Cek Resi
+            <!-- Overlaid Top Header -->
+            <header class="relative z-20 border-b border-white/15">
+                <div
+                    class="mx-auto flex max-w-[1200px] items-center justify-between gap-6 px-6 py-4 md:px-10 md:py-5"
+                >
+                    <Link
+                        href="/"
+                        class="no-underline"
+                        aria-label="Beranda Pache Logistic"
+                    >
+                        <PacheLogo :inverted="true" />
                     </Link>
-                    <a href="#showcase" class="text-[13px] font-medium text-[#596579] no-underline transition hover:text-[#2563eb]">
-                        Modul ERP
-                    </a>
-                    <a href="#workflow" class="text-[13px] font-medium text-[#596579] no-underline transition hover:text-[#2563eb]">
-                        Kebijakan Non-COD
-                    </a>
-                    <a href="#faq" class="text-[13px] font-medium text-[#596579] no-underline transition hover:text-[#2563eb]">
-                        FAQ
-                    </a>
-                </nav>
 
-                <div class="flex items-center gap-2.5">
-                    <Link href="/login" class="pache-header-cta">
-                        <span>Masuk ERP</span>
-                        <ArrowUpRight class="h-4 w-4" :stroke-width="2" />
-                    </Link>
+                    <nav
+                        class="hidden items-center gap-7 md:flex"
+                        aria-label="Navigasi utama"
+                    >
+                        <a
+                            href="#top"
+                            class="text-[11.5px] font-bold tracking-[0.1em] text-white uppercase no-underline transition hover:text-[#93c5fd]"
+                        >
+                            Beranda
+                        </a>
+                        <a
+                            href="#services"
+                            class="text-[11.5px] font-bold tracking-[0.1em] text-white/85 uppercase no-underline transition hover:text-white"
+                        >
+                            Layanan
+                        </a>
+                        <a
+                            href="#values"
+                            class="text-[11.5px] font-bold tracking-[0.1em] text-white/85 uppercase no-underline transition hover:text-white"
+                        >
+                            Nilai &amp; Cabang
+                        </a>
+                        <a
+                            href="#clients"
+                            class="text-[11.5px] font-bold tracking-[0.1em] text-white/85 uppercase no-underline transition hover:text-white"
+                        >
+                            Mitra
+                        </a>
+                        <Link
+                            href="/tracking"
+                            class="text-[11.5px] font-bold tracking-[0.1em] text-white/85 uppercase no-underline transition hover:text-white"
+                        >
+                            Cek Resi
+                        </Link>
+                        <Link
+                            href="/login"
+                            class="rounded-[8px] border border-white/25 bg-[#2563eb] px-4 py-2 text-[11.5px] font-bold tracking-[0.1em] text-white uppercase no-underline shadow-[0_4px_14px_-4px_rgba(37,99,235,0.65)] transition hover:-translate-y-px hover:bg-[#1d4ed8]"
+                        >
+                            Masuk ERP
+                        </Link>
+                    </nav>
+
                     <button
                         type="button"
                         @click="mobileMenuOpen = !mobileMenuOpen"
-                        class="flex h-11 w-11 items-center justify-center rounded-lg text-[#18202c] hover:bg-[#2563eb]/8 md:hidden"
+                        class="flex h-10 w-10 items-center justify-center rounded-[8px] border border-white/30 text-white hover:bg-white/10 md:hidden"
                         aria-label="Toggle navigasi"
                     >
                         <X v-if="mobileMenuOpen" class="h-5 w-5" />
                         <Menu v-else class="h-5 w-5" />
                     </button>
                 </div>
-            </div>
 
-            <div v-if="mobileMenuOpen" class="border-t border-[#dce5f1] bg-[#f7f9fc] px-6 py-4 md:hidden">
-                <div class="flex flex-col gap-3">
-                    <Link href="/tracking" class="text-[14px] font-medium text-[#18202c] no-underline" @click="mobileMenuOpen = false">Cek Resi Publik</Link>
-                    <a href="#showcase" class="text-[14px] font-medium text-[#18202c] no-underline" @click="mobileMenuOpen = false">Modul ERP</a>
-                    <a href="#workflow" class="text-[14px] font-medium text-[#18202c] no-underline" @click="mobileMenuOpen = false">Kebijakan Non-COD</a>
-                    <a href="#faq" class="text-[14px] font-medium text-[#18202c] no-underline" @click="mobileMenuOpen = false">FAQ</a>
-                </div>
-            </div>
-        </header>
-
-        <!-- Hero Section with #hero-paper-lines SVG Texture -->
-        <section class="relative isolate overflow-hidden py-10 md:py-14">
-            <svg class="pache-hero-texture" xmlns="http://www.w3.org/2000/svg" aria-hidden="true" focusable="false">
-                <defs>
-                    <pattern id="hero-paper-lines" width="224" height="224" patternUnits="userSpaceOnUse">
-                        <g fill="none" stroke="currentColor" stroke-width="1">
-                            <path d="M-40 48H56a72 72 0 0 1 72 72v144" />
-                            <path d="M-40 64H56a56 56 0 0 1 56 56v144" />
-                            <path d="M-40 80H56a40 40 0 0 1 40 40v144" />
-                            <path d="M184-40v72a40 40 0 0 0 40 40h40" />
-                            <path d="M200-40v72a24 24 0 0 0 24 24h40" />
-                        </g>
-                    </pattern>
-                </defs>
-                <rect width="100%" height="100%" fill="url(#hero-paper-lines)" />
-            </svg>
-
-            <div class="relative z-10 mx-auto grid max-w-[1360px] grid-cols-1 items-center gap-10 px-6 md:px-12 lg:grid-cols-[1fr_1.08fr]">
-                <!-- Left Copy -->
-                <div>
-                    <div class="mb-5 inline-flex items-center gap-2 rounded-lg border border-[#dce5f1] bg-white px-3 py-1.5 text-[12px] font-semibold text-[#233c65]">
-                        <ShieldCheck class="h-4 w-4 text-[#2563eb]" :stroke-width="1.9" />
-                        <span>Strictly Non-COD · Online Payment · Cash Loket · B2B TOP</span>
-                    </div>
-
-                    <h1 class="text-[clamp(38px,4.1vw,56px)] leading-[1.15] font-[650] tracking-[-0.045em] text-[#18202c]">
-                        <span class="block">Logistik presisi tanpa celah,</span>
-                        <span class="block text-[#2563eb]">100% Non-COD terintegrasi.</span>
-                    </h1>
-
-                    <p class="mt-5 max-w-[490px] text-[16px] leading-[1.8] text-[#596579]">
-                        <strong>Pache Logistic</strong> menyatukan pemesanan multi-koli (OMS), gudang FIFO/FEFO (WMS), konsolidasi armada &amp; e-POD (TMS), hingga penagihan otomatis B2B TOP dalam satu sistem ERP tanpa kebocoran kas kurir.
-                    </p>
-
-                    <div class="mt-7 flex flex-wrap items-center gap-4">
-                        <Link href="/login" class="pache-hero-cta">
-                            <span>Buka Workspace ERP</span>
-                            <ArrowRight class="h-[18px] w-[18px]" :stroke-width="2" />
-                        </Link>
+                <div
+                    v-if="mobileMenuOpen"
+                    class="border-t border-white/15 bg-[#172b46]/95 px-6 py-4 md:hidden"
+                >
+                    <div class="flex flex-col gap-3">
+                        <a
+                            href="#services"
+                            class="text-[13px] font-semibold text-white uppercase no-underline"
+                            @click="mobileMenuOpen = false"
+                        >
+                            Layanan
+                        </a>
+                        <a
+                            href="#values"
+                            class="text-[13px] font-semibold text-white uppercase no-underline"
+                            @click="mobileMenuOpen = false"
+                        >
+                            Nilai &amp; Cabang
+                        </a>
+                        <a
+                            href="#clients"
+                            class="text-[13px] font-semibold text-white uppercase no-underline"
+                            @click="mobileMenuOpen = false"
+                        >
+                            Mitra
+                        </a>
                         <Link
                             href="/tracking"
-                            class="inline-flex min-h-[50px] items-center gap-2.5 rounded-[9px] border border-[#dce5f1] bg-white px-5 text-[14px] font-semibold text-[#18202c] no-underline transition hover:border-[#2563eb] hover:text-[#2563eb]"
+                            class="text-[13px] font-semibold text-white uppercase no-underline"
+                            @click="mobileMenuOpen = false"
                         >
-                            <Search class="h-4 w-4 text-[#2563eb]" />
-                            <span>Lacak Multi-AWB</span>
+                            Cek Resi Publik
+                        </Link>
+                        <Link
+                            href="/login"
+                            class="text-[13px] font-bold text-[#93c5fd] uppercase no-underline"
+                            @click="mobileMenuOpen = false"
+                        >
+                            Masuk Workspace ERP
                         </Link>
                     </div>
+                </div>
+            </header>
 
-                    <div class="mt-8 grid max-w-[460px] grid-cols-3 gap-5 border-t border-[#dce5f1] pt-5">
-                        <div>
-                            <p class="text-[24px] font-bold tracking-[-0.03em] text-[#18202c] tabular-nums">
-                                {{ stats.branches }} Hub
-                            </p>
-                            <p class="text-[12px] text-[#596579]">Cabang &amp; Sorting Center</p>
-                        </div>
-                        <div>
-                            <p class="text-[24px] font-bold tracking-[-0.03em] text-[#18202c] tabular-nums">
-                                {{ stats.routes }} Rute
-                            </p>
-                            <p class="text-[12px] text-[#596579]">Matriks Tarif Aktif</p>
-                        </div>
-                        <div>
-                            <p class="text-[24px] font-bold tracking-[-0.03em] text-[#2563eb] tabular-nums">
-                                0% COD
-                            </p>
-                            <p class="text-[12px] text-[#596579]">Bebas Risiko Kas Kurir</p>
-                        </div>
+            <!-- Hero Copy Positioned Right-Aligned Like Reference -->
+            <div
+                class="relative z-10 mx-auto grid max-w-[1200px] grid-cols-1 px-6 py-20 md:grid-cols-12 md:px-10 md:py-28"
+            >
+                <div class="md:col-span-6 md:col-start-7">
+                    <p
+                        class="text-[11px] font-bold tracking-[0.18em] text-[#93c5fd] uppercase"
+                    >
+                        PACHE LOGISTIC · STRICTLY NON-COD ERP
+                    </p>
+                    <h1
+                        class="mt-3 text-[clamp(32px,3.8vw,48px)] leading-[1.14] font-bold tracking-[-0.03em] text-white uppercase"
+                    >
+                        KAMI JARINGAN |<br />
+                        PENGIRIMAN TERPADU
+                    </h1>
+                    <p
+                        class="mt-4 max-w-[490px] text-[15px] leading-[1.7] text-[#e2ebf5]"
+                    >
+                        Platform ERP logistik terpadu untuk pemesanan
+                        multi-koli, kontrol stok gudang anti-minus, manifest
+                        linehaul, dan penagihan B2B TOP tanpa uang tunai di
+                        tangan kurir.
+                    </p>
+
+                    <div class="mt-7 flex flex-wrap items-center gap-3.5">
+                        <Link
+                            href="/tracking"
+                            class="group inline-flex min-h-[48px] items-center gap-3 rounded-[10px] bg-[#2563eb] px-6 text-[12px] font-bold tracking-[0.08em] text-white uppercase no-underline shadow-[0_12px_26px_-8px_rgba(37,99,235,0.65)] transition duration-200 hover:-translate-y-0.5 hover:bg-[#1d4ed8]"
+                        >
+                            <span>Lacak Multi-AWB</span>
+                            <ArrowRight
+                                class="h-4 w-4 transition-transform duration-200 group-hover:translate-x-1"
+                            />
+                        </Link>
+                        <Link
+                            href="/login"
+                            class="group inline-flex min-h-[48px] items-center gap-3 rounded-[10px] border border-white/80 bg-white px-6 text-[12px] font-bold tracking-[0.08em] text-[#172b46] uppercase no-underline shadow-[0_12px_26px_-10px_rgba(15,23,42,0.45)] transition duration-200 hover:-translate-y-0.5 hover:bg-[#dbeafe]"
+                        >
+                            <span>Masuk Workspace</span>
+                            <ArrowRight
+                                class="h-4 w-4 transition-transform duration-200 group-hover:translate-x-1"
+                            />
+                        </Link>
                     </div>
                 </div>
+            </div>
+        </section>
 
-                <!-- Right Interactive Quick Tracking + Dispatch Preview Card -->
-                <div class="rounded-[18px] border border-[#dce5f1] bg-white p-6 shadow-[0_12px_36px_-14px_rgba(24,32,44,0.14)] md:p-7">
-                    <div class="flex items-center justify-between border-b border-[#dce5f1] pb-4">
-                        <div>
-                            <p class="text-[11px] font-bold tracking-[0.12em] text-[#2563eb] uppercase">
-                                PELACAKAN RESI PUBLIK
-                            </p>
-                            <h2 class="mt-1 text-[20px] font-[650] tracking-[-0.03em] text-[#18202c]">
-                                Cek Status Pengiriman Pache Logistic
-                            </h2>
-                        </div>
-                        <span class="rounded-md border border-[#bfdbfe] bg-[#eff6ff] px-2.5 py-1 text-[11px] font-bold text-[#1d4ed8]">
-                            LIVE DB
-                        </span>
+        <!-- Deep Navy Intro Statement Band + Quick AWB Lookup (#172b46) -->
+        <section class="bg-[#172b46] text-white">
+            <div class="mx-auto max-w-[1200px] px-6 py-11 md:px-10">
+                <div
+                    class="grid grid-cols-1 items-center gap-6 md:grid-cols-[0.36fr_0.64fr] md:gap-10"
+                >
+                    <div
+                        class="md:border-r md:border-[#2c476e] md:pr-8 md:text-right"
+                    >
+                        <h2
+                            class="text-[20px] leading-[1.35] font-bold tracking-[0.03em] text-white uppercase"
+                        >
+                            KAMI HADIRKAN<br />
+                            EMPAT MODUL TERPADU
+                        </h2>
+                        <p
+                            class="mt-2 text-[11.5px] font-semibold tracking-[0.08em] text-[#93c5fd] uppercase tabular-nums"
+                        >
+                            {{ stats.branches }} Cabang ·
+                            {{ stats.routes }} Rute · {{ stats.shipments }} Resi
+                        </p>
                     </div>
 
-                    <form @submit.prevent="submitQuickTrack" class="mt-5 space-y-3">
-                        <label class="block text-[12px] font-semibold text-[#596579]">
-                            Nomor Resi / AWB (dukung hingga 10 AWB sekaligus)
-                        </label>
-                        <div class="flex flex-col gap-2.5 sm:flex-row">
-                            <input
-                                v-model="quickAwb"
-                                type="text"
-                                placeholder="Contoh: PCH-JKT-261121-00001"
-                                class="h-[46px] flex-1 rounded-[8px] border border-[#d5dfed] bg-[#f7f9fc] px-3.5 text-[14px] font-medium text-[#18202c] outline-none tabular-nums focus:border-[#2563eb] focus:bg-white"
-                            />
+                    <div class="space-y-4">
+                        <p
+                            class="text-[14px] leading-[1.8] text-[#cbd5e1] italic"
+                        >
+                            Di Pache Logistic, seluruh operasional bergerak di
+                            atas kebijakan Strictly Non-COD — hanya mendukung
+                            Online Payment QRIS/VA, Cash di loket asal, dan B2B
+                            Term of Payment (TOP) dengan gerbang validasi
+                            otomatis sebelum pengiriman diberangkatkan.
+                        </p>
+
+                        <!-- Integrated Pill-Bar Public AWB Check -->
+                        <form
+                            @submit.prevent="submitQuickTrack"
+                            class="flex flex-col gap-1.5 rounded-[12px] border border-[#2f4d78] bg-[#0f1f36]/90 p-1.5 shadow-[inset_0_1px_2px_rgba(0,0,0,0.28),0_10px_24px_-12px_rgba(0,0,0,0.45)] transition focus-within:border-[#60a5fa] focus-within:ring-2 focus-within:ring-[#60a5fa]/25 sm:flex-row sm:items-center"
+                        >
+                            <div class="flex flex-1 items-center gap-2.5 pl-3">
+                                <Search
+                                    class="h-4 w-4 shrink-0 text-[#93c5fd]"
+                                />
+                                <input
+                                    v-model="quickAwb"
+                                    type="text"
+                                    placeholder="Masukkan nomor resi / AWB (contoh: PCH-JKT-261121-00001)"
+                                    aria-label="Nomor Resi AWB"
+                                    class="h-[38px] w-full border-0 bg-transparent text-[13.5px] font-medium text-white tabular-nums placeholder-[#94a3b8] outline-none"
+                                />
+                            </div>
                             <button
                                 type="submit"
-                                class="inline-flex h-[46px] items-center justify-center gap-2 rounded-[8px] bg-[#2563eb] px-5 text-[13.5px] font-semibold text-white transition hover:bg-[#1d4ed8]"
+                                class="inline-flex h-[40px] shrink-0 items-center justify-center gap-2 rounded-[8px] bg-[#2563eb] px-5 text-[12px] font-bold tracking-[0.08em] text-white uppercase shadow-[0_4px_12px_-3px_rgba(37,99,235,0.6)] transition hover:bg-[#1d4ed8]"
                             >
-                                <Search class="h-4 w-4" />
-                                <span>Lacak</span>
+                                <span>Cek Resi</span>
+                                <ArrowRight class="h-3.5 w-3.5" />
                             </button>
-                        </div>
-                    </form>
-
-                    <div class="mt-4">
-                        <p class="mb-2 text-[11.5px] font-medium text-[#748095]">
-                            Coba resi aktif dari database lokal:
-                        </p>
-                        <div class="flex flex-wrap gap-2">
+                        </form>
+                        <div
+                            v-if="sampleAwbs.length"
+                            class="flex flex-wrap items-center gap-2 text-[11px]"
+                        >
+                            <span class="text-[#93c5fd]">Contoh AWB:</span>
                             <button
                                 v-for="code in sampleAwbs"
                                 :key="code"
                                 type="button"
-                                @click="quickAwb = code; submitQuickTrack()"
-                                class="rounded-md border border-[#dce5f1] bg-[#f7f9fc] px-2.5 py-1.5 text-[12px] font-semibold text-[#18202c] transition tabular-nums hover:border-[#2563eb] hover:bg-[#eff6ff] hover:text-[#1d4ed8]"
+                                @click="
+                                    quickAwb = code;
+                                    submitQuickTrack();
+                                "
+                                class="rounded-full border border-[#345482] bg-[#0f1f36]/75 px-3 py-1 font-semibold text-[#e2ebf5] tabular-nums transition hover:border-[#60a5fa] hover:bg-[#2563eb] hover:text-white"
                             >
                                 {{ code }}
                             </button>
                         </div>
                     </div>
-
-                    <!-- Mini Non-COD Payment Gate Visual -->
-                    <div class="mt-6 grid grid-cols-3 gap-2.5 rounded-[12px] bg-[#eef3fb] p-3.5">
-                        <div class="rounded-[9px] border border-white bg-white p-3">
-                            <CreditCard class="h-4 w-4 text-[#2563eb]" />
-                            <p class="mt-2 text-[12px] font-bold text-[#18202c]">Online</p>
-                            <p class="text-[11px] text-[#596579]">QRIS &amp; VA Instan</p>
-                        </div>
-                        <div class="rounded-[9px] border border-white bg-white p-3">
-                            <Building2 class="h-4 w-4 text-[#15803d]" />
-                            <p class="mt-2 text-[12px] font-bold text-[#18202c]">Cash Loket</p>
-                            <p class="text-[11px] text-[#596579]">Lunas di Cabang Asal</p>
-                        </div>
-                        <div class="rounded-[9px] border border-white bg-white p-3">
-                            <ReceiptText class="h-4 w-4 text-[#b45309]" />
-                            <p class="mt-2 text-[12px] font-bold text-[#18202c]">B2B TOP</p>
-                            <p class="text-[11px] text-[#596579]">Net 7 / 14 / 30 Hari</p>
-                        </div>
-                    </div>
                 </div>
             </div>
         </section>
 
-        <!-- Soft Neumorphism Showcase Tabs (Strictly on Landing Showcase) -->
-        <section class="py-12 md:py-16" id="showcase">
-            <div class="mx-auto max-w-[1180px] px-6 md:px-12">
-                <div class="mb-7 max-w-[660px]">
-                    <p class="text-[12px] font-bold tracking-[0.12em] text-[#2563eb] uppercase">
-                        ARSITEKTUR MODULAR MONOLITH
-                    </p>
-                    <h2 class="mt-2 text-[clamp(28px,3.1vw,40px)] leading-[1.22] font-[650] tracking-[-0.045em] text-[#18202c]">
-                        Lima modul operasional dalam satu alur kerja yang saling mengunci.
-                    </h2>
-                </div>
-
-                <!-- Restricted Soft Neumorphism Tab Bar -->
-                <div class="showcase-tabs" role="tablist" aria-label="Pilih modul ERP Pache Logistic">
-                    <button
-                        v-for="tab in showcaseTabs"
-                        :key="tab.id"
-                        type="button"
-                        role="tab"
-                        :aria-selected="activeTab === tab.id"
-                        class="showcase-tab"
-                        :class="{ 'is-active': activeTab === tab.id }"
-                        @click="activeTab = tab.id"
+        <!-- 2x2 Diagonal-Slant Service Cards Grid (Cool-Paper #f7f9fc) -->
+        <section
+            class="border-b border-[#dce5f1] bg-[#f7f9fc] py-14 md:py-16"
+            id="services"
+        >
+            <div class="mx-auto max-w-[1200px] px-6 md:px-10">
+                <div class="grid grid-cols-1 gap-7 md:grid-cols-2">
+                    <article
+                        v-for="(svc, idx) in services"
+                        :key="svc.title"
+                        class="group grid grid-cols-1 overflow-hidden rounded-[16px] border border-[#dce5f1] bg-white shadow-[0_10px_28px_-16px_rgba(23,43,70,0.18)] transition duration-200 hover:-translate-y-1 hover:border-[#93c5fd] hover:shadow-[0_18px_36px_-18px_rgba(37,99,235,0.22)] sm:grid-cols-[0.92fr_1.08fr]"
                     >
-                        <component :is="tab.icon" class="h-[18px] w-[18px] shrink-0" :stroke-width="1.6" />
-                        <span>{{ tab.label }}</span>
-                    </button>
+                        <div
+                            class="pache-diag-media relative min-h-[200px] overflow-hidden bg-[#edf2f8]"
+                        >
+                            <img
+                                :src="svc.image"
+                                :alt="svc.alt"
+                                class="h-full w-full object-cover transition duration-500 group-hover:scale-[1.04]"
+                            />
+                        </div>
+                        <div class="flex flex-col justify-between p-6">
+                            <div>
+                                <div
+                                    class="flex items-center justify-between gap-2"
+                                >
+                                    <span
+                                        class="inline-flex rounded-full bg-[#eff6ff] px-2.5 py-0.5 text-[10.5px] font-bold tracking-[0.08em] text-[#2563eb] uppercase tabular-nums"
+                                    >
+                                        0{{ idx + 1 }} · MODUL
+                                    </span>
+                                </div>
+                                <h3
+                                    class="mt-2.5 text-[15px] font-bold tracking-[0.03em] text-[#18202c] uppercase"
+                                >
+                                    {{ svc.title }}
+                                </h3>
+                                <p
+                                    class="mt-2 text-[13px] leading-[1.7] text-[#596579]"
+                                >
+                                    {{ svc.desc }}
+                                </p>
+                            </div>
+                            <div
+                                class="mt-4 flex items-center justify-between border-t border-[#eef3fb] pt-3 text-[11px] font-bold tracking-[0.06em] text-[#2563eb] uppercase tabular-nums"
+                            >
+                                <span>{{ svc.meta }}</span>
+                                <ArrowRight
+                                    class="h-3.5 w-3.5 transition-transform duration-200 group-hover:translate-x-1"
+                                />
+                            </div>
+                        </div>
+                    </article>
                 </div>
 
-                <!-- Active Showcase Stage -->
-                <div class="mt-7 grid grid-cols-1 items-center gap-8 rounded-[16px] bg-[#eef3fb] p-6 md:p-10 lg:grid-cols-[0.95fr_1.05fr]">
-                    <div>
-                        <span class="text-[11px] font-bold tracking-[0.1em] text-[#1d4ed8] uppercase">
-                            {{ showcaseDetails.eyebrow }}
-                        </span>
-                        <h3 class="mt-3 text-[26px] leading-[1.3] font-[650] tracking-[-0.04em] text-[#18202c]">
-                            {{ showcaseDetails.title }}
-                        </h3>
-                        <p class="mt-4 text-[14.5px] leading-[1.85] text-[#596579]">
-                            {{ showcaseDetails.desc }}
-                        </p>
-                        <ul class="mt-5 space-y-2.5 p-0">
-                            <li
-                                v-for="item in showcaseDetails.highlights"
-                                :key="item"
-                                class="flex items-start gap-2.5 text-[13.5px] text-[#18202c]"
-                            >
-                                <CheckCircle2 class="mt-0.5 h-4 w-4 shrink-0 text-[#2563eb]" />
-                                <span>{{ item }}</span>
-                            </li>
-                        </ul>
-                        <Link
-                            href="/login"
-                            class="mt-6 inline-flex items-center gap-2.5 text-[13.5px] font-bold text-[#2563eb] no-underline hover:text-[#1d4ed8]"
-                        >
-                            <span>Coba langsung di Workspace Pache</span>
-                            <ArrowRight class="h-4 w-4" />
-                        </Link>
-                    </div>
+                <p
+                    class="mx-auto mt-10 max-w-[780px] text-center text-[13px] leading-[1.85] text-[#596579] italic"
+                >
+                    Kepuasan mitra korporat dan keamanan arus kas adalah
+                    prioritas utama. Seluruh modul OMS, WMS, TMS, dan Finance
+                    Non-COD bekerja dalam satu ekosistem transaksional yang
+                    teruji dari loket asal hingga bukti terima digital e-POD.
+                </p>
+            </div>
+        </section>
 
-                    <div class="rounded-[14px] border border-[#dce5f1] bg-white p-5 shadow-[0_10px_28px_-12px_rgba(24,32,44,0.2)]">
-                        <div class="flex items-center justify-between border-b border-[#e2ebf5] pb-3">
-                            <span class="text-[12px] font-bold text-[#172b46]">
-                                Pache Logistic · {{ showcaseTabs.find((t) => t.id === activeTab)?.label }}
-                            </span>
-                            <span class="rounded bg-[#eff6ff] px-2 py-0.5 text-[11px] font-semibold text-[#1d4ed8]">
-                                Laravel 13 + PostgreSQL
-                            </span>
-                        </div>
-                        <div class="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-3">
-                            <div
-                                v-for="(m, idx) in showcaseDetails.metrics"
-                                :key="m.label"
-                                class="rounded-[12px] p-4"
-                                :class="
-                                    idx === 0
-                                        ? 'bg-[#2563eb] text-white'
-                                        : idx === 1
-                                          ? 'bg-[#dcecff] text-[#214f8a]'
-                                          : 'border border-[#e2ebf5] bg-[#f3f7fc] text-[#172b46]'
-                                "
+        <!-- Asymmetric Split: Core Values Accordion (Left) + Locations/Hubs (Right) -->
+        <section
+            class="border-b border-[#dce5f1] bg-white py-14 md:py-16"
+            id="values"
+        >
+            <div
+                class="mx-auto grid max-w-[1200px] grid-cols-1 gap-12 px-6 md:px-10 lg:grid-cols-[1.35fr_0.9fr]"
+            >
+                <!-- Left: Core Values Accordion -->
+                <div>
+                    <h2
+                        class="text-[19px] font-bold tracking-[0.04em] text-[#18202c] uppercase"
+                    >
+                        NILAI &amp; KEBIJAKAN INTI KAMI
+                    </h2>
+
+                    <div
+                        class="mt-6 divide-y divide-[#dce5f1] overflow-hidden rounded-[14px] border border-[#dce5f1] shadow-[0_8px_24px_-16px_rgba(23,43,70,0.16)]"
+                    >
+                        <div
+                            v-for="(val, idx) in coreValues"
+                            :key="val.title"
+                            class="bg-[#f7f9fc]/70"
+                        >
+                            <button
+                                type="button"
+                                @click="toggleValue(idx)"
+                                class="flex w-full items-center justify-between gap-4 px-5 py-4 text-left transition hover:bg-[#eff6ff]"
+                                :aria-expanded="openValueIndex === idx"
                             >
                                 <span
-                                    class="block text-[11px] font-medium"
-                                    :class="idx === 0 ? 'text-blue-100' : idx === 1 ? 'text-[#617fa6]' : 'text-[#64748b]'"
+                                    class="text-[12.5px] font-bold tracking-[0.06em] text-[#18202c] uppercase"
                                 >
-                                    {{ m.label }}
+                                    {{ val.title }}
                                 </span>
-                                <strong class="mt-2 block text-[19px] font-bold tracking-[-0.03em] tabular-nums">
-                                    {{ m.value }}
-                                </strong>
+                                <span
+                                    class="flex h-7 w-7 shrink-0 items-center justify-center rounded-full transition"
+                                    :class="
+                                        openValueIndex === idx
+                                            ? 'bg-[#2563eb] text-white'
+                                            : 'bg-[#edf2f8] text-[#596579]'
+                                    "
+                                >
+                                    <Minus
+                                        v-if="openValueIndex === idx"
+                                        class="h-3.5 w-3.5"
+                                    />
+                                    <Plus v-else class="h-3.5 w-3.5" />
+                                </span>
+                            </button>
+
+                            <div
+                                v-show="openValueIndex === idx"
+                                class="grid grid-cols-1 gap-5 border-t border-[#dce5f1] bg-white p-5 sm:grid-cols-[190px_1fr]"
+                            >
+                                <img
+                                    :src="val.image"
+                                    :alt="val.heading"
+                                    class="h-[140px] w-full rounded-[10px] border border-[#dce5f1] object-cover sm:h-full"
+                                />
+                                <div>
+                                    <h3
+                                        class="text-[15px] font-bold text-[#18202c]"
+                                    >
+                                        {{ val.heading }}
+                                    </h3>
+                                    <p
+                                        class="mt-2 text-[12.5px] leading-[1.75] text-[#596579]"
+                                    >
+                                        {{ val.body }}
+                                    </p>
+                                    <ul
+                                        class="mt-3 grid grid-cols-1 gap-x-4 gap-y-1.5 p-0 text-[12px] font-semibold text-[#172b46] sm:grid-cols-2"
+                                    >
+                                        <li
+                                            v-for="pt in val.points"
+                                            :key="pt"
+                                            class="flex list-none items-center gap-1.5"
+                                        >
+                                            <ArrowRight
+                                                class="h-3 w-3 shrink-0 text-[#2563eb]"
+                                            />
+                                            <span>{{ pt }}</span>
+                                        </li>
+                                    </ul>
+                                </div>
                             </div>
                         </div>
-                        <div class="mt-4 rounded-[10px] border border-[#e2ebf5] bg-[#f8fbff] p-4">
-                            <div class="flex items-center justify-between text-[12px] font-semibold text-[#172b46]">
-                                <span>Validasi Kebijakan Inti (Domain Layer)</span>
-                                <span class="text-[#15803d]">Aktif &amp; Teruji</span>
-                            </div>
-                            <div class="mt-3 grid grid-cols-2 gap-2 text-[11.5px] text-[#596579]">
-                                <div class="rounded-md bg-white px-2.5 py-2 border border-[#e2ebf5]">
-                                    <strong class="text-[#18202c]">BR-01</strong> Chargeable Weight
-                                </div>
-                                <div class="rounded-md bg-white px-2.5 py-2 border border-[#e2ebf5]">
-                                    <strong class="text-[#18202c]">BR-02</strong> Credit Limit TOP
-                                </div>
-                                <div class="rounded-md bg-white px-2.5 py-2 border border-[#e2ebf5]">
-                                    <strong class="text-[#18202c]">BR-04</strong> Immutable Ledger
-                                </div>
-                                <div class="rounded-md bg-white px-2.5 py-2 border border-[#e2ebf5]">
-                                    <strong class="text-[#18202c]">BR-08</strong> Non-COD Gate
-                                </div>
+                    </div>
+                </div>
+
+                <!-- Right: Our Locations / Branch Network -->
+                <div>
+                    <h2
+                        class="text-[19px] font-bold tracking-[0.04em] text-[#18202c] uppercase"
+                    >
+                        LOKASI &amp; CABANG KAMI
+                    </h2>
+
+                    <div class="mt-6">
+                        <img
+                            src="/images/landing/hub-office.jpg"
+                            alt="Pusat operasional dan koordinasi cabang Pache Logistic"
+                            class="h-[195px] w-full rounded-[14px] border border-[#dce5f1] object-cover shadow-[0_8px_22px_-14px_rgba(23,43,70,0.18)]"
+                        />
+                        <p
+                            class="mt-4 text-[13px] leading-[1.75] text-[#596579]"
+                        >
+                            Operasional Pache Logistic mencakup jaringan Head
+                            Office, Regional Hub, dan Sorting Center aktif yang
+                            terhubung langsung dalam satu buku besar rute.
+                        </p>
+
+                        <div
+                            class="mt-3 grid grid-cols-2 gap-x-4 gap-y-1.5 border-t border-[#dce5f1] pt-3 text-[12px] tabular-nums"
+                        >
+                            <div
+                                v-for="b in branches"
+                                :key="b.id"
+                                class="flex items-center gap-2"
+                            >
+                                <span class="font-bold text-[#2563eb]">{{
+                                    b.code
+                                }}</span>
+                                <span class="truncate text-[#18202c]">{{
+                                    b.city
+                                }}</span>
                             </div>
                         </div>
+
+                        <Link
+                            href="/tracking"
+                            class="mt-4 inline-flex items-center gap-2 text-[11.5px] font-bold tracking-[0.08em] text-[#2563eb] uppercase no-underline hover:text-[#1d4ed8]"
+                        >
+                            <span>Lacak Pengiriman Antar Cabang</span>
+                            <ArrowRight class="h-3.5 w-3.5" />
+                        </Link>
                     </div>
                 </div>
             </div>
         </section>
 
-        <!-- Zig-Zag Split Stories with Comic Speech Bubbles (Anti-Slop Layout) -->
-        <section class="py-12 md:py-16" id="workflow">
-            <div class="mx-auto max-w-[1200px] space-y-16 px-6 md:px-12">
-                <div>
-                    <p class="text-[12px] font-bold tracking-[0.12em] text-[#2563eb] uppercase">
-                        STANDAR OPERASIONAL HARIAN
-                    </p>
-                    <h2 class="mt-2 text-[clamp(26px,2.8vw,34px)] font-[650] tracking-[-0.04em] text-[#18202c]">
-                        Dirancang untuk kecepatan loket, gudang, dan keuangan korporat.
-                    </h2>
+        <!-- Clients / Mitra Strip (Cool-Paper #f7f9fc) -->
+        <section class="bg-[#f7f9fc] py-14" id="clients">
+            <div class="mx-auto max-w-[1200px] px-6 md:px-10">
+                <h2
+                    class="text-center text-[18px] font-bold tracking-[0.06em] text-[#18202c] uppercase"
+                >
+                    KLIEN &amp; MITRA B2B KAMI
+                </h2>
+
+                <div
+                    class="mt-8 grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-6"
+                >
+                    <div
+                        v-for="client in clients"
+                        :key="client.code"
+                        class="group flex flex-col items-center justify-between rounded-[16px] border border-[#dce5f1] bg-white px-4 py-5 text-center shadow-[0_8px_20px_-14px_rgba(23,43,70,0.16)] transition duration-200 hover:-translate-y-0.5 hover:border-[#93c5fd] hover:shadow-[0_14px_28px_-16px_rgba(37,99,235,0.22)]"
+                    >
+                        <span
+                            class="flex h-11 w-11 items-center justify-center rounded-full border border-[#dbeafe] bg-[#eff6ff] text-[12px] font-bold tracking-[0.05em] text-[#1d4ed8] tabular-nums transition duration-200 group-hover:border-[#2563eb] group-hover:bg-[#2563eb] group-hover:text-white"
+                        >
+                            {{ clientMonogram(client.name) }}
+                        </span>
+                        <p
+                            class="mt-3 line-clamp-2 text-[12.5px] leading-[1.35] font-bold text-[#18202c]"
+                        >
+                            {{ client.name }}
+                        </p>
+                        <span
+                            class="mt-2.5 inline-flex rounded-full px-2.5 py-0.5 text-[10px] font-bold tracking-[0.07em] uppercase"
+                            :class="
+                                client.type === 'b2b_contract'
+                                    ? 'bg-[#eff6ff] text-[#1d4ed8]'
+                                    : 'bg-[#f3f7fc] text-[#596579]'
+                            "
+                        >
+                            {{
+                                client.type === 'b2b_contract'
+                                    ? 'B2B TOP'
+                                    : 'RETAIL'
+                            }}
+                        </span>
+                    </div>
                 </div>
 
-                <!-- Story 1 -->
-                <article class="grid grid-cols-1 items-center gap-10 lg:grid-cols-2 lg:gap-16">
-                    <div class="relative rounded-[18px] border border-[#dce5f1] bg-[#edf3fc] p-7">
-                        <div class="space-y-3">
-                            <div class="story-bubble max-w-[260px]">
-                                0% kebocoran kas kurir — Strictly Non-COD
-                            </div>
-                            <div class="story-bubble story-bubble-right ml-auto max-w-[270px]">
-                                Webhook QRIS &amp; Virtual Account melunasi resi seketika
-                            </div>
-                            <div class="story-bubble max-w-[280px]">
-                                Klien korporat TOP Net 7/14/30 langsung lolos cek plafon BR-02
-                            </div>
-                        </div>
-                    </div>
-                    <div class="max-w-[460px]">
-                        <h3 class="text-[clamp(24px,2.5vw,32px)] leading-[1.28] font-[650] tracking-[-0.04em] text-[#18202c]">
-                            Tiga kanal pembayaran bersih,<br />tanpa satu rupiah pun di kurir.
-                        </h3>
-                        <p class="mt-4 text-[15px] leading-[1.85] text-[#596579]">
-                            Setiap paket wajib berstatus <strong>PAID</strong> (melalui Online Payment atau Cash di loket asal) atau memiliki pagu kredit <strong>B2B TOP</strong> yang sah sebelum diizinkan masuk ke Manifest linehaul.
-                        </p>
-                        <Link href="/login" class="mt-5 inline-flex items-center gap-2 text-[14px] font-bold text-[#2563eb] no-underline hover:text-[#1d4ed8]">
-                            <span>Lihat alur Finance &amp; Kasir Loket</span>
-                            <ArrowRight class="h-4 w-4" />
-                        </Link>
-                    </div>
-                </article>
-
-                <!-- Story 2 (Reversed Zig-Zag) -->
-                <article class="grid grid-cols-1 items-center gap-10 lg:grid-cols-2 lg:gap-16">
-                    <div class="order-2 max-w-[460px] lg:order-1">
-                        <h3 class="text-[clamp(24px,2.5vw,32px)] leading-[1.28] font-[650] tracking-[-0.04em] text-[#18202c]">
-                            Scan barcode tanpa mouse,<br />stok gudang terkunci rapat.
-                        </h3>
-                        <p class="mt-4 text-[15px] leading-[1.85] text-[#596579]">
-                            Operator gudang dan sorting hub cukup menembakkan USB/Bluetooth barcode scanner. Umpan balik suara dan penguncian baris database memastikan tidak ada stok negatif maupun paket salah rute Hub.
-                        </p>
-                        <Link href="/login" class="mt-5 inline-flex items-center gap-2 text-[14px] font-bold text-[#2563eb] no-underline hover:text-[#1d4ed8]">
-                            <span>Eksplorasi WMS &amp; TMS Manifest</span>
-                            <ArrowRight class="h-4 w-4" />
-                        </Link>
-                    </div>
-                    <div class="relative order-1 rounded-[18px] border border-[#dce5f1] bg-[#edf3fc] p-7 lg:order-2">
-                        <div class="space-y-3">
-                            <div class="story-bubble max-w-[260px]">
-                                Validasi scan &lt; 150 ms dengan audio beep sukses / tolak
-                            </div>
-                            <div class="story-bubble story-bubble-right ml-auto max-w-[270px]">
-                                Blokir armada jika STNK, Uji KIR, atau SIM kedaluwarsa
-                            </div>
-                            <div class="story-bubble max-w-[280px]">
-                                e-POD wajib nama penerima, relasi, dan koordinat GPS
-                            </div>
-                        </div>
-                    </div>
-                </article>
+                <p class="mt-7 text-center text-[13px] text-[#596579] italic">
+                    Terdaftar aktif pada Master Data Pelanggan Pache Logistic —
+                    mendukung kontrak kredit B2B maupun pengiriman ritel loket.
+                </p>
             </div>
         </section>
 
-        <!-- Native <details> FAQ Accordion -->
-        <section class="py-12 md:py-16" id="faq">
-            <div class="mx-auto grid max-w-[1200px] grid-cols-1 gap-10 px-6 md:px-12 lg:grid-cols-[0.75fr_1.25fr] lg:gap-20">
-                <div>
-                    <h2 class="text-[32px] leading-[1.22] font-[650] tracking-[-0.04em] text-[#18202c]">
-                        Pertanyaan<br />umum
-                    </h2>
-                    <p class="mt-4 text-[14px] leading-[1.8] text-[#596579]">
-                        Ringkasan kebijakan operasional Non-COD, tarif volumetrik, dan privasi pelacakan di Pache Logistic.
-                    </p>
-                </div>
-                <div class="pache-faq">
-                    <details v-for="item in faqs" :key="item.q">
-                        <summary>
-                            <span>{{ item.q }}</span>
-                            <Plus class="faq-plus h-4 w-4 shrink-0 text-[#748095] transition-transform duration-200" />
-                        </summary>
-                        <div class="pt-3 pr-8">
-                            <p class="text-[14px] leading-[1.85] text-[#596579]">
-                                {{ item.a }}
+        <!-- Diagonal Split CTA Band (Pache Brand Blue #2563eb + Cargo Photo, Full-Bleed Left) -->
+        <section class="relative overflow-hidden bg-[#172b46]">
+            <div
+                class="absolute inset-y-0 left-0 hidden w-1/2 bg-[#2563eb] lg:block"
+                aria-hidden="true"
+            />
+            <img
+                src="/images/landing/svc-cargo.jpg"
+                alt="Armada kontainer laut dan kargo terintegrasi"
+                class="absolute inset-y-0 right-0 hidden h-full w-1/2 object-cover lg:block"
+            />
+            <div class="relative z-10 mx-auto max-w-[1200px]">
+                <div
+                    class="pache-diag-banner bg-[#2563eb] px-6 py-10 text-white md:px-10 lg:w-[64%] lg:pr-24"
+                >
+                    <div
+                        class="flex flex-col items-start justify-between gap-6 sm:flex-row sm:items-center"
+                    >
+                        <div>
+                            <h2
+                                class="text-[20px] font-bold tracking-[0.03em] uppercase"
+                            >
+                                LOGISTIK DAN KARGO NON-COD
+                            </h2>
+                            <p
+                                class="mt-1.5 max-w-[440px] text-[13.5px] leading-[1.65] text-[#dbeafe] italic"
+                            >
+                                Masuk ke Workspace ERP untuk booking resi A6,
+                                scan bagging manifest, atau cek status kiriman
+                                Anda sekarang.
                             </p>
                         </div>
-                    </details>
+                        <Link
+                            href="/login"
+                            class="group inline-flex min-h-[46px] shrink-0 items-center gap-3 rounded-[10px] bg-white px-6 text-[12px] font-bold tracking-[0.08em] text-[#172b46] uppercase no-underline shadow-[0_10px_24px_-10px_rgba(15,23,42,0.35)] transition duration-200 hover:-translate-y-0.5 hover:bg-[#dbeafe]"
+                        >
+                            <span>Masuk ERP</span>
+                            <ArrowRight
+                                class="h-4 w-4 transition-transform duration-200 group-hover:translate-x-1"
+                            />
+                        </Link>
+                    </div>
                 </div>
             </div>
         </section>
 
-        <!-- High-Contrast Dark Closing Banner (#111) -->
-        <section class="bg-[#111111] text-white">
-            <div class="mx-auto flex max-w-[1200px] flex-col items-start justify-between gap-8 px-6 py-16 md:flex-row md:items-center md:px-12">
-                <h2 class="text-[clamp(28px,3.2vw,38px)] leading-[1.2] font-[650] tracking-[-0.04em]">
-                    Siap mengendalikan pengiriman<br />
-                    <span class="text-[#93c5fd]">dengan Pache Logistic?</span>
-                </h2>
-                <div class="max-w-[360px]">
-                    <p class="mb-5 text-[13.5px] leading-[1.8] text-[#cbd5e1]">
-                        Masuk ke ERP Workspace untuk membuat resi Non-COD, melakukan scan bagging Manifest, mengelola Bin WMS, atau menerbitkan Invoice B2B TOP.
-                    </p>
-                    <Link
-                        href="/login"
-                        class="inline-flex min-h-[48px] items-center gap-4 rounded-[9px] bg-white px-5 text-[14px] font-bold text-[#111111] no-underline transition hover:bg-[#dbeafe]"
-                    >
-                        <span>Masuk ke ERP Pache</span>
-                        <ArrowUpRight class="h-4 w-4" />
-                    </Link>
-                </div>
-            </div>
-        </section>
-
-        <!-- Cool-Paper Footer (#f0f4fa) -->
-        <footer class="bg-[#f0f4fa] text-[#596579]">
-            <div class="mx-auto max-w-[1200px] px-6 py-12 md:px-12">
-                <div class="grid grid-cols-1 gap-10 border-b border-[#dce5f1] pb-10 md:grid-cols-[1fr_1.2fr]">
+        <!-- Dark Structural Footer (#111111) -->
+        <footer class="bg-[#111111] text-[#94a3b8]">
+            <div class="mx-auto max-w-[1200px] px-6 py-12 md:px-10">
+                <div
+                    class="grid grid-cols-1 gap-10 border-b border-[#262626] pb-10 md:grid-cols-[1.05fr_1fr_1fr]"
+                >
+                    <!-- Brand Column -->
                     <div>
-                        <PacheLogo />
-                        <p class="mt-4 max-w-[36ch] text-[13px] leading-[1.85]">
-                            Platform ERP Logistik terpadu 100% Non-COD untuk operasional multi-cabang, gudang fulfillment, manajemen armada, dan penagihan B2B TOP.
+                        <PacheLogo :inverted="true" />
+                        <p
+                            class="mt-4 max-w-[34ch] text-[12.5px] leading-[1.8] text-[#cbd5e1]"
+                        >
+                            Platform ERP Logistik terpadu Strictly Non-COD untuk
+                            pengelolaan OMS, WMS, TMS, Finance TOP, dan Live
+                            Public Tracking.
                         </p>
+                        <div class="mt-4 flex items-center gap-3">
+                            <Link
+                                href="/tracking"
+                                class="text-[12px] font-semibold text-[#93c5fd] no-underline hover:underline"
+                            >
+                                Cek Resi Publik &raquo;
+                            </Link>
+                        </div>
                     </div>
-                    <div class="grid grid-cols-2 gap-8 sm:grid-cols-3">
-                        <div class="space-y-2">
-                            <h3 class="text-[12px] font-bold text-[#344054]">Layanan Publik</h3>
-                            <Link href="/tracking" class="block text-[12.5px] text-[#596579] no-underline hover:text-[#2563eb]">Cek Resi Multi-AWB</Link>
-                            <Link href="/login" class="block text-[12.5px] text-[#596579] no-underline hover:text-[#2563eb]">Portal ERP &amp; B2B</Link>
+
+                    <!-- Quick Links 2-Column List -->
+                    <div>
+                        <h3
+                            class="text-[12px] font-bold tracking-[0.1em] text-white uppercase"
+                        >
+                            Tautan Cepat
+                        </h3>
+                        <div
+                            class="mt-4 grid grid-cols-2 gap-x-6 gap-y-2 text-[12.5px]"
+                        >
+                            <a
+                                href="#top"
+                                class="text-[#cbd5e1] no-underline hover:text-[#93c5fd]"
+                                >Beranda</a
+                            >
+                            <Link
+                                href="/oms/shipments"
+                                class="text-[#cbd5e1] no-underline hover:text-[#93c5fd]"
+                                >OMS Resi</Link
+                            >
+                            <a
+                                href="#services"
+                                class="text-[#cbd5e1] no-underline hover:text-[#93c5fd]"
+                                >Layanan</a
+                            >
+                            <Link
+                                href="/wms/inventory"
+                                class="text-[#cbd5e1] no-underline hover:text-[#93c5fd]"
+                                >WMS Gudang</Link
+                            >
+                            <a
+                                href="#values"
+                                class="text-[#cbd5e1] no-underline hover:text-[#93c5fd]"
+                                >Nilai &amp; Cabang</a
+                            >
+                            <Link
+                                href="/tms/manifests"
+                                class="text-[#cbd5e1] no-underline hover:text-[#93c5fd]"
+                                >TMS Manifest</Link
+                            >
+                            <Link
+                                href="/tracking"
+                                class="text-[#cbd5e1] no-underline hover:text-[#93c5fd]"
+                                >Cek Resi</Link
+                            >
+                            <Link
+                                href="/finance"
+                                class="text-[#cbd5e1] no-underline hover:text-[#93c5fd]"
+                                >Finance TOP</Link
+                            >
                         </div>
-                        <div class="space-y-2">
-                            <h3 class="text-[12px] font-bold text-[#344054]">Kanal Pembayaran</h3>
-                            <p class="text-[12.5px]">Online Payment (QRIS / VA)</p>
-                            <p class="text-[12.5px]">Cash di Loket Asal</p>
-                            <p class="text-[12.5px]">B2B Term of Payment (TOP)</p>
-                        </div>
-                        <div class="space-y-2">
-                            <h3 class="text-[12px] font-bold text-[#344054]">Kantor Pusat</h3>
-                            <p class="text-[12.5px]">Jl. Jend. Sudirman Kav. 52, Jakarta Selatan</p>
-                            <p class="text-[12.5px] tabular-nums">021-5501-8800</p>
-                        </div>
+                    </div>
+
+                    <!-- Reach Us -->
+                    <div>
+                        <h3
+                            class="text-[12px] font-bold tracking-[0.1em] text-white uppercase"
+                        >
+                            Kantor Pusat
+                        </h3>
+                        <ul
+                            class="mt-4 space-y-2.5 p-0 text-[12.5px] text-[#cbd5e1]"
+                        >
+                            <li class="flex list-none items-start gap-2.5">
+                                <MapPin
+                                    class="mt-0.5 h-4 w-4 shrink-0 text-[#93c5fd]"
+                                />
+                                <span
+                                    >Jl. Jend. Sudirman Kav. 52, Jakarta
+                                    Selatan</span
+                                >
+                            </li>
+                            <li
+                                class="flex list-none items-center gap-2.5 tabular-nums"
+                            >
+                                <Phone
+                                    class="h-4 w-4 shrink-0 text-[#93c5fd]"
+                                />
+                                <span>021-5501-8800</span>
+                            </li>
+                            <li class="flex list-none items-center gap-2.5">
+                                <Mail class="h-4 w-4 shrink-0 text-[#93c5fd]" />
+                                <span>ops@pachelogistic.id</span>
+                            </li>
+                            <li
+                                class="flex list-none items-center gap-2.5 tabular-nums"
+                            >
+                                <Clock
+                                    class="h-4 w-4 shrink-0 text-[#93c5fd]"
+                                />
+                                <span>Senin - Sabtu : 08:00 - 18:00</span>
+                            </li>
+                        </ul>
                     </div>
                 </div>
-                <div class="flex flex-col items-center justify-between gap-3 pt-6 text-[11.5px] text-[#748095] sm:flex-row">
-                    <span>&copy; 2026 Pache Logistic. Strictly Non-COD Logistics ERP.</span>
-                    <a href="#top" class="font-semibold text-[#596579] no-underline hover:text-[#2563eb]">
-                        Kembali ke atas ↑
+
+                <div
+                    class="flex flex-col items-center justify-between gap-3 pt-6 text-[11.5px] text-[#94a3b8] sm:flex-row"
+                >
+                    <span
+                        >&copy; 2026 Pache Logistic. Strictly Non-COD Logistics
+                        ERP.</span
+                    >
+                    <a
+                        href="#top"
+                        class="font-semibold text-[#cbd5e1] no-underline hover:text-[#93c5fd]"
+                    >
+                        Kembali ke atas
                     </a>
                 </div>
             </div>

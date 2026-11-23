@@ -1,63 +1,41 @@
 <script setup lang="ts">
 import { Head, Link, useForm } from '@inertiajs/vue3';
-import {
-    AlertTriangle,
-    ArrowLeft,
-    Building2,
-    CreditCard,
-    Plus,
-    ReceiptText,
-    ShieldCheck,
-    Trash2,
-} from '@lucide/vue';
+import { ArrowLeft, ShieldCheck } from '@lucide/vue';
 import { computed, toRef, watch } from 'vue';
+import OmsBookingSummaryStrip from '@/components/oms/OmsBookingSummaryStrip.vue';
+import OmsColliTableSection from '@/components/oms/OmsColliTableSection.vue';
+import OmsPaymentMethodSection from '@/components/oms/OmsPaymentMethodSection.vue';
+import OmsVendorAndChargesSection from '@/components/oms/OmsVendorAndChargesSection.vue';
 import {
     useChargeableWeight,
     type PackageColli,
 } from '@/composables/useChargeableWeight';
-import { formatIdr } from '@/lib/format';
-
-interface CustomerOption {
-    id: number;
-    code: string;
-    name: string;
-    type: string;
-    phone: string;
-    address: string;
-    is_top_enabled: boolean;
-    top_days: number;
-    credit_limit: number;
-    credit_exposure: number;
-}
-
-interface BranchOption {
-    id: number;
-    code: string;
-    name: string;
-    city: string;
-}
-
-interface TariffOption {
-    origin_branch_id: number;
-    destination_branch_id: number;
-    service_type: string;
-    volumetric_divisor: number;
-    min_weight_kg: number;
-    rate_per_kg: number;
-    insurance_rate_pct: number;
-    sla_days: number;
-}
+import type {
+    AdditionalChargeInput,
+    BranchOption,
+    CustomerOption,
+    PaymentMethod,
+    ServiceType,
+    SurchargeOption,
+    TariffOption,
+    VendorOption,
+} from '@/types/erp';
 
 const props = defineProps<{
     customers: CustomerOption[];
     branches: BranchOption[];
     tariffs: TariffOption[];
+    vendors: VendorOption[];
+    surcharges: SurchargeOption[];
 }>();
 
 const form = useForm({
     customer_id: props.customers[0]?.id ?? 0,
     origin_branch_id: props.branches[0]?.id ?? 0,
     destination_branch_id: props.branches[2]?.id ?? props.branches[1]?.id ?? 0,
+    vendor_id: null as number | null,
+    vendor_awb_no: '',
+    vendor_cost: 0,
     reference_no: '',
     shipper_name: props.customers[0]?.name ?? '',
     shipper_phone: props.customers[0]?.phone ?? '',
@@ -65,10 +43,12 @@ const form = useForm({
     consignee_name: '',
     consignee_phone: '',
     consignee_address: '',
-    service_type: 'REG' as 'REG' | 'EXP' | 'CRG',
-    payment_method: 'online' as 'online' | 'cash' | 'top',
+    service_type: 'REG' as ServiceType,
+    payment_method: 'online' as PaymentMethod,
     declared_value: 0,
     cash_received: true,
+    surcharge_ids: [] as number[],
+    additional_charges: [] as AdditionalChargeInput[],
     items: [
         {
             description: 'Karton Barang Logistik',
@@ -83,6 +63,10 @@ const form = useForm({
 
 const selectedCustomer = computed(() =>
     props.customers.find((c) => c.id === form.customer_id),
+);
+
+const selectedVendor = computed(
+    () => props.vendors.find((v) => v.id === form.vendor_id) ?? null,
 );
 
 watch(
@@ -109,8 +93,13 @@ const activeTariff = computed(() =>
 );
 
 const divisor = computed(() => {
-    if (activeTariff.value) return Number(activeTariff.value.volumetric_divisor);
-    return form.service_type === 'EXP' ? 5000 : form.service_type === 'CRG' ? 4000 : 6000;
+    if (activeTariff.value)
+        return Number(activeTariff.value.volumetric_divisor);
+    return form.service_type === 'EXP'
+        ? 5000
+        : form.service_type === 'CRG'
+          ? 4000
+          : 6000;
 });
 
 const minWeight = computed(() =>
@@ -133,12 +122,84 @@ const estimatedShippingCost = computed(
 
 const estimatedInsurance = computed(() => {
     const val = Math.max(0, Number(form.declared_value) || 0);
-    const pct = activeTariff.value ? Number(activeTariff.value.insurance_rate_pct) : 0.25;
+    const pct = activeTariff.value
+        ? Number(activeTariff.value.insurance_rate_pct)
+        : 0.25;
     return val > 0 ? Math.round(val * (pct / 100)) : 0;
 });
 
+const routeSurchargeBreakdown = computed(() => {
+    const t = activeTariff.value;
+    if (!t) {
+        return { fuel: 0, handling: 0, heavy: 0, total: 0 };
+    }
+    const fuel =
+        Number(t.fuel_surcharge_pct) > 0
+            ? Math.round(
+                  estimatedShippingCost.value *
+                      (Number(t.fuel_surcharge_pct) / 100),
+              )
+            : 0;
+    const handling =
+        Number(t.handling_fee) > 0 ? Math.round(Number(t.handling_fee)) : 0;
+    const threshold =
+        t.heavy_weight_threshold_kg !== null
+            ? Number(t.heavy_weight_threshold_kg)
+            : null;
+    const heavyRate = Number(t.heavy_weight_surcharge_per_kg) || 0;
+    const heavy =
+        threshold !== null &&
+        weightSummary.value.chargeableKg > threshold &&
+        heavyRate > 0
+            ? Math.round(
+                  (weightSummary.value.chargeableKg - threshold) * heavyRate,
+              )
+            : 0;
+
+    return {
+        fuel,
+        handling,
+        heavy,
+        total: fuel + handling + heavy,
+    };
+});
+
+function computeSurchargeAmount(s: SurchargeOption): number {
+    const rate = Number(s.amount) || 0;
+    if (s.calc_mode === 'percentage') {
+        return Math.round(estimatedShippingCost.value * (rate / 100));
+    }
+    if (s.calc_mode === 'per_kg') {
+        return Math.round(weightSummary.value.chargeableKg * rate);
+    }
+    return Math.round(rate);
+}
+
+const selectedPresetSurchargesTotal = computed(() =>
+    props.surcharges
+        .filter((s) => form.surcharge_ids.includes(s.id))
+        .reduce((sum, s) => sum + computeSurchargeAmount(s), 0),
+);
+
+const estimatedSurchargeTotal = computed(
+    () =>
+        routeSurchargeBreakdown.value.total +
+        selectedPresetSurchargesTotal.value,
+);
+
+const estimatedAddChargeTotal = computed(() =>
+    form.additional_charges.reduce(
+        (sum, c) => sum + Math.max(0, Number(c.amount) || 0),
+        0,
+    ),
+);
+
 const estimatedTotal = computed(
-    () => estimatedShippingCost.value + estimatedInsurance.value,
+    () =>
+        estimatedShippingCost.value +
+        estimatedInsurance.value +
+        estimatedSurchargeTotal.value +
+        estimatedAddChargeTotal.value,
 );
 
 const topWillExceedLimit = computed(() => {
@@ -148,6 +209,40 @@ const topWillExceedLimit = computed(() => {
         selectedCustomer.value.credit_limit
     );
 });
+
+function applyVendorBaseCost(): void {
+    if (!selectedVendor.value) return;
+    form.vendor_cost = Math.round(
+        weightSummary.value.chargeableKg *
+            Number(selectedVendor.value.base_cost_per_kg || 0),
+    );
+}
+
+function addChargeRow(): void {
+    form.additional_charges.push({
+        description: '',
+        amount: 25000,
+        notes: '',
+    });
+}
+
+function removeChargeRow(idx: number): void {
+    form.additional_charges.splice(idx, 1);
+}
+
+function updateChargeField(
+    idx: number,
+    field: 'description' | 'amount',
+    value: string | number,
+): void {
+    const row = form.additional_charges[idx];
+    if (!row) return;
+    if (field === 'description') {
+        row.description = String(value);
+    } else {
+        row.amount = Number(value) || 0;
+    }
+}
 
 function addColli(): void {
     form.items.push({
@@ -166,6 +261,20 @@ function removeColli(idx: number): void {
     }
 }
 
+function updateColliField(
+    idx: number,
+    field: keyof PackageColli,
+    value: string | number,
+): void {
+    const item = form.items[idx];
+    if (!item) return;
+    if (field === 'description') {
+        item.description = String(value);
+    } else {
+        item[field] = Number(value) || 0;
+    }
+}
+
 function submitBooking(): void {
     form.post('/oms/shipments', { preserveScroll: true });
 }
@@ -177,51 +286,38 @@ function submitBooking(): void {
     <form @submit.prevent="submitBooking" class="space-y-6">
         <div class="flex flex-wrap items-end justify-between gap-4">
             <div>
-                <Link href="/oms/shipments" class="inline-flex items-center gap-1.5 text-[12.5px] font-semibold text-[var(--brand-blue)] no-underline hover:underline">
+                <Link
+                    href="/oms/shipments"
+                    class="inline-flex items-center gap-1.5 text-[12.5px] font-semibold text-[var(--brand-blue)] no-underline hover:underline"
+                >
                     <ArrowLeft class="h-3.5 w-3.5" />
                     <span>Kembali ke Daftar Resi</span>
                 </Link>
-                <h1 class="mt-1 text-[23px] font-[650] tracking-[-0.03em] text-[var(--ink)]">
+                <h1
+                    class="mt-1 text-[23px] font-[650] tracking-[-0.03em] text-[var(--ink)]"
+                >
                     Buat Resi Pengiriman Baru (Multi-Koli · Non-COD)
                 </h1>
             </div>
-            <div class="inline-flex items-center gap-2 rounded-[10px] border border-[#bfdbfe] bg-[#eff6ff] px-3 py-1.5 text-[12px] font-bold text-[#1d4ed8] dark:border-[#1d4ed8]/40 dark:bg-[#1e3a8a]/30 dark:text-[#93c5fd]">
+            <div
+                class="inline-flex items-center gap-2 rounded-[10px] border border-[#bfdbfe] bg-[#eff6ff] px-3 py-1.5 text-[12px] font-bold text-[#1d4ed8] dark:border-[#1d4ed8]/40 dark:bg-[#1e3a8a]/30 dark:text-[#93c5fd]"
+            >
                 <ShieldCheck class="h-4 w-4" />
                 <span>Hanya Online Payment, Cash Loket, &amp; B2B TOP</span>
             </div>
         </div>
 
-        <!-- Live Weight & Cost Summary Strip -->
-        <div class="grid grid-cols-2 gap-3 lg:grid-cols-4">
-            <div class="rounded-[14px] border border-[var(--hairline)] bg-[var(--surface-soft)] p-4">
-                <span class="text-[11.5px] font-semibold text-[var(--muted)]">Berat Aktual Total</span>
-                <p class="mt-1 text-[20px] font-bold text-[var(--ink)] tabular-nums">
-                    {{ weightSummary.actualFormatted }} kg
-                </p>
-            </div>
-            <div class="rounded-[14px] border border-[var(--hairline)] bg-[var(--surface-soft)] p-4">
-                <span class="text-[11.5px] font-semibold text-[var(--muted)]">
-                    Berat Volumetrik (÷ {{ divisor }})
-                </span>
-                <p class="mt-1 text-[20px] font-bold text-[var(--ink)] tabular-nums">
-                    {{ weightSummary.volumetricFormatted }} kg
-                </p>
-            </div>
-            <div class="rounded-[14px] border border-[#d3e5ff] bg-[#dcecff] p-4 text-[#214f8a] dark:border-[#303030] dark:bg-[#1a1a1a] dark:text-[var(--ink)]">
-                <span class="text-[11.5px] font-semibold">Chargeable Weight (BR-01)</span>
-                <p class="mt-1 text-[22px] font-bold tabular-nums">
-                    {{ weightSummary.chargeableKg }} kg
-                </p>
-            </div>
-            <div class="rounded-[14px] bg-[#2563eb] p-4 text-white">
-                <span class="text-[11.5px] font-semibold text-blue-100">
-                    Estimasi Total ({{ formatIdr(ratePerKg) }}/kg)
-                </span>
-                <p class="mt-1 text-[22px] font-bold tabular-nums">
-                    {{ formatIdr(estimatedTotal) }}
-                </p>
-            </div>
-        </div>
+        <OmsBookingSummaryStrip
+            :divisor="divisor"
+            :actual-formatted="weightSummary.actualFormatted"
+            :volumetric-formatted="weightSummary.volumetricFormatted"
+            :chargeable-kg="weightSummary.chargeableKg"
+            :surcharge-and-add-charge-total="
+                estimatedSurchargeTotal + estimatedAddChargeTotal
+            "
+            :rate-per-kg="ratePerKg"
+            :estimated-total="estimatedTotal"
+        />
 
         <!-- Section 1: Customer, Route & Service -->
         <section class="pache-panel space-y-4 p-5">
@@ -230,15 +326,29 @@ function submitBooking(): void {
             </h2>
             <div class="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-4">
                 <div>
-                    <label class="mb-1.5 block text-[12px] font-semibold text-[var(--muted)]">Pelanggan / Akun Shipper</label>
+                    <label
+                        class="mb-1.5 block text-[12px] font-semibold text-[var(--muted)]"
+                        >Pelanggan / Akun Shipper</label
+                    >
                     <select v-model="form.customer_id" class="pache-input">
-                        <option v-for="c in customers" :key="c.id" :value="c.id">
-                            {{ c.name }} ({{ c.is_top_enabled ? `TOP ${c.top_days}h` : 'Retail' }})
+                        <option
+                            v-for="c in customers"
+                            :key="c.id"
+                            :value="c.id"
+                        >
+                            {{ c.name }} ({{
+                                c.is_top_enabled
+                                    ? `TOP ${c.top_days}h`
+                                    : 'Retail'
+                            }})
                         </option>
                     </select>
                 </div>
                 <div>
-                    <label class="mb-1.5 block text-[12px] font-semibold text-[var(--muted)]">Cabang / Hub Asal</label>
+                    <label
+                        class="mb-1.5 block text-[12px] font-semibold text-[var(--muted)]"
+                        >Cabang / Hub Asal</label
+                    >
                     <select v-model="form.origin_branch_id" class="pache-input">
                         <option v-for="b in branches" :key="b.id" :value="b.id">
                             {{ b.code }} — {{ b.city }}
@@ -246,21 +356,35 @@ function submitBooking(): void {
                     </select>
                 </div>
                 <div>
-                    <label class="mb-1.5 block text-[12px] font-semibold text-[var(--muted)]">Cabang / Hub Tujuan</label>
-                    <select v-model="form.destination_branch_id" class="pache-input">
+                    <label
+                        class="mb-1.5 block text-[12px] font-semibold text-[var(--muted)]"
+                        >Cabang / Hub Tujuan</label
+                    >
+                    <select
+                        v-model="form.destination_branch_id"
+                        class="pache-input"
+                    >
                         <option v-for="b in branches" :key="b.id" :value="b.id">
                             {{ b.code }} — {{ b.city }}
                         </option>
                     </select>
-                    <p v-if="form.errors.destination_branch_id" class="mt-1 text-[12px] text-[#b42318]">
+                    <p
+                        v-if="form.errors.destination_branch_id"
+                        class="mt-1 text-[12px] text-[#b42318]"
+                    >
                         {{ form.errors.destination_branch_id }}
                     </p>
                 </div>
                 <div>
-                    <label class="mb-1.5 block text-[12px] font-semibold text-[var(--muted)]">Layanan &amp; Pembagi</label>
+                    <label
+                        class="mb-1.5 block text-[12px] font-semibold text-[var(--muted)]"
+                        >Layanan &amp; Pembagi</label
+                    >
                     <select v-model="form.service_type" class="pache-input">
                         <option value="REG">REG — Reguler (÷ 6000)</option>
-                        <option value="EXP">EXP — Express Udara (÷ 5000)</option>
+                        <option value="EXP">
+                            EXP — Express Udara (÷ 5000)
+                        </option>
                         <option value="CRG">CRG — Cargo Truk (÷ 4000)</option>
                     </select>
                 </div>
@@ -268,249 +392,166 @@ function submitBooking(): void {
 
             <div class="grid grid-cols-1 gap-4 md:grid-cols-2">
                 <div>
-                    <label class="mb-1.5 block text-[12px] font-semibold text-[var(--muted)]">Nomor Referensi / PO Klien (opsional)</label>
-                    <input v-model="form.reference_no" type="text" class="pache-input" placeholder="PO-2026-8812" />
+                    <label
+                        class="mb-1.5 block text-[12px] font-semibold text-[var(--muted)]"
+                        >Nomor Referensi / PO Klien (opsional)</label
+                    >
+                    <input
+                        v-model="form.reference_no"
+                        type="text"
+                        class="pache-input"
+                        placeholder="PO-2026-8812"
+                    />
                 </div>
                 <div>
-                    <label class="mb-1.5 block text-[12px] font-semibold text-[var(--muted)]">Nilai Barang untuk Asuransi 0,25% (IDR, opsional)</label>
-                    <input v-model.number="form.declared_value" type="number" min="0" step="50000" class="pache-input tabular-nums" />
+                    <label
+                        class="mb-1.5 block text-[12px] font-semibold text-[var(--muted)]"
+                    >
+                        Nilai Barang untuk Asuransi
+                        {{ activeTariff?.insurance_rate_pct ?? 0.25 }}% (IDR,
+                        opsional)
+                    </label>
+                    <input
+                        v-model.number="form.declared_value"
+                        type="number"
+                        min="0"
+                        step="50000"
+                        class="pache-input tabular-nums"
+                    />
                 </div>
             </div>
         </section>
 
-        <!-- Section 2: Strictly Non-COD Payment Selection -->
-        <section class="pache-panel space-y-4 p-5">
-            <div>
-                <h2 class="text-[16px] font-[650] text-[var(--ink)]">
-                    2. Metode Pembayaran (Strictly Non-COD)
-                </h2>
-                <p class="text-[12.5px] text-[var(--muted)]">
-                    Sistem Pache Logistic menolak COD. Pilih salah satu dari 3 kanal pembayaran resmi di bawah ini.
-                </p>
-            </div>
+        <OmsVendorAndChargesSection
+            v-model:vendor-id="form.vendor_id"
+            v-model:vendor-awb-no="form.vendor_awb_no"
+            v-model:vendor-cost="form.vendor_cost"
+            v-model:surcharge-ids="form.surcharge_ids"
+            :vendors="vendors"
+            :surcharges="surcharges"
+            :service-type="form.service_type"
+            :additional-charges="form.additional_charges"
+            :route-surcharge-breakdown="routeSurchargeBreakdown"
+            :compute-surcharge-amount="computeSurchargeAmount"
+            @apply-vendor-base-cost="applyVendorBaseCost"
+            @add-charge-row="addChargeRow"
+            @remove-charge-row="removeChargeRow"
+            @update-charge-field="updateChargeField"
+        />
 
-            <div class="grid grid-cols-1 gap-3 md:grid-cols-3">
-                <!-- Online Payment -->
-                <label
-                    class="flex cursor-pointer flex-col gap-2 rounded-[13px] border p-4 transition"
-                    :class="
-                        form.payment_method === 'online'
-                            ? 'border-[#2563eb] bg-[#eff6ff] dark:bg-[#1e3a8a]/25'
-                            : 'border-[var(--hairline)] bg-[var(--surface-soft)]'
-                    "
-                >
-                    <div class="flex items-center justify-between">
-                        <div class="flex items-center gap-2 font-bold text-[var(--ink)]">
-                            <CreditCard class="h-4 w-4 text-[#2563eb]" />
-                            <span>Online Payment</span>
-                        </div>
-                        <input type="radio" value="online" v-model="form.payment_method" class="h-4 w-4 text-[#2563eb]" />
-                    </div>
-                    <p class="text-[12px] text-[var(--muted)]">
-                        QRIS Dinamis / Virtual Account (BCA, Mandiri, BRI, BNI). Resi menunggu webhook lunas sebelum Manifest.
-                    </p>
-                </label>
+        <OmsPaymentMethodSection
+            v-model:payment-method="form.payment_method"
+            v-model:cash-received="form.cash_received"
+            :selected-customer="selectedCustomer"
+            :estimated-total="estimatedTotal"
+            :top-will-exceed-limit="topWillExceedLimit"
+        />
 
-                <!-- Cash Loket -->
-                <label
-                    class="flex cursor-pointer flex-col gap-2 rounded-[13px] border p-4 transition"
-                    :class="
-                        form.payment_method === 'cash'
-                            ? 'border-[#15803d] bg-[#ecfdf3] dark:bg-[#14532d]/25'
-                            : 'border-[var(--hairline)] bg-[var(--surface-soft)]'
-                    "
-                >
-                    <div class="flex items-center justify-between">
-                        <div class="flex items-center gap-2 font-bold text-[var(--ink)]">
-                            <Building2 class="h-4 w-4 text-[#15803d]" />
-                            <span>Cash (Loket Asal)</span>
-                        </div>
-                        <input type="radio" value="cash" v-model="form.payment_method" class="h-4 w-4 text-[#15803d]" />
-                    </div>
-                    <p class="text-[12px] text-[var(--muted)]">
-                        Tunai di muka di loket cabang asal saat drop-off. Kurir last-mile tidak menagih penerima.
-                    </p>
-                </label>
-
-                <!-- B2B TOP -->
-                <label
-                    class="flex flex-col gap-2 rounded-[13px] border p-4 transition"
-                    :class="[
-                        !selectedCustomer?.is_top_enabled
-                            ? 'cursor-not-allowed opacity-55'
-                            : 'cursor-pointer',
-                        form.payment_method === 'top'
-                            ? 'border-[#d3a56b] bg-[#f8eddf] dark:bg-[#78350f]/25'
-                            : 'border-[var(--hairline)] bg-[var(--surface-soft)]',
-                    ]"
-                >
-                    <div class="flex items-center justify-between">
-                        <div class="flex items-center gap-2 font-bold text-[var(--ink)]">
-                            <ReceiptText class="h-4 w-4 text-[#b45309]" />
-                            <span>B2B Credit (TOP)</span>
-                        </div>
-                        <input
-                            type="radio"
-                            value="top"
-                            v-model="form.payment_method"
-                            :disabled="!selectedCustomer?.is_top_enabled"
-                            class="h-4 w-4 text-[#b45309]"
-                        />
-                    </div>
-                    <p class="text-[12px] text-[var(--muted)]">
-                        <template v-if="selectedCustomer?.is_top_enabled">
-                            Kontrak aktif Net {{ selectedCustomer.top_days }} hari. Ditagihkan via Auto-Invoicing.
-                        </template>
-                        <template v-else>
-                            Hanya tersedia untuk pelanggan kontrak korporat B2B.
-                        </template>
-                    </p>
-                </label>
-            </div>
-
-            <!-- Cash Received Checkbox -->
-            <div v-if="form.payment_method === 'cash'" class="rounded-[11px] border border-[#bbf7d0] bg-[#ecfdf3] p-3.5 dark:border-[#15803d]/40 dark:bg-[#14532d]/20">
-                <label class="flex items-center gap-2.5 text-[13px] font-semibold text-[#15803d] dark:text-[#86efac]">
-                    <input v-model="form.cash_received" type="checkbox" class="h-4 w-4 rounded" />
-                    <span>Tunai sudah diterima lunas di Kasir Loket saat ini (langsung berstatus PAID &amp; masuk Jurnal Kas)</span>
-                </label>
-            </div>
-
-            <!-- TOP Credit Limit Enforcement Preview (BR-02) -->
-            <div
-                v-if="form.payment_method === 'top' && selectedCustomer"
-                class="rounded-[12px] border p-4"
-                :class="
-                    topWillExceedLimit
-                        ? 'border-[#fecaca] bg-[#fef2f2] text-[#991b1b]'
-                        : 'border-[#e7cfa8] bg-[#f8eddf]/60 text-[#78350f] dark:border-[#b45309]/40 dark:bg-[#78350f]/20 dark:text-[#fcd34d]'
-                "
-            >
-                <div class="flex flex-wrap items-center justify-between gap-2 text-[13px]">
-                    <strong class="flex items-center gap-1.5">
-                        <AlertTriangle v-if="topWillExceedLimit" class="h-4 w-4" />
-                        <span>Pengecekan Plafon Kredit B2B (BR-02)</span>
-                    </strong>
-                    <span class="font-bold tabular-nums">
-                        Eksposur Baru: {{ formatIdr(selectedCustomer.credit_exposure + estimatedTotal) }} / Limit: {{ formatIdr(selectedCustomer.credit_limit) }}
-                    </span>
-                </div>
-                <p v-if="topWillExceedLimit" class="mt-1 text-[12px] font-semibold">
-                    Melebihi Credit Limit! Backend akan menolak penerbitan resi ini hingga ada pelunasan Invoice TOP.
-                </p>
-            </div>
-        </section>
-
-        <!-- Section 3: Shipper & Consignee -->
+        <!-- Section 4 & 5: Shipper & Consignee -->
         <section class="grid grid-cols-1 gap-4 lg:grid-cols-2">
             <div class="pache-panel space-y-3 p-5">
-                <h2 class="text-[16px] font-[650] text-[var(--ink)]">3. Data Pengirim (Shipper)</h2>
+                <h2 class="text-[16px] font-[650] text-[var(--ink)]">
+                    4. Data Pengirim (Shipper)
+                </h2>
                 <div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
                     <div>
-                        <label class="mb-1 block text-[12px] font-semibold text-[var(--muted)]">Nama Pengirim</label>
-                        <input v-model="form.shipper_name" type="text" required class="pache-input" />
+                        <label
+                            class="mb-1 block text-[12px] font-semibold text-[var(--muted)]"
+                            >Nama Pengirim</label
+                        >
+                        <input
+                            v-model="form.shipper_name"
+                            type="text"
+                            required
+                            class="pache-input"
+                        />
                     </div>
                     <div>
-                        <label class="mb-1 block text-[12px] font-semibold text-[var(--muted)]">Telepon Pengirim</label>
-                        <input v-model="form.shipper_phone" type="text" required class="pache-input tabular-nums" />
+                        <label
+                            class="mb-1 block text-[12px] font-semibold text-[var(--muted)]"
+                            >Telepon Pengirim</label
+                        >
+                        <input
+                            v-model="form.shipper_phone"
+                            type="text"
+                            required
+                            class="pache-input tabular-nums"
+                        />
                     </div>
                 </div>
                 <div>
-                    <label class="mb-1 block text-[12px] font-semibold text-[var(--muted)]">Alamat Pengirim</label>
-                    <textarea v-model="form.shipper_address" rows="2" required class="pache-input" />
+                    <label
+                        class="mb-1 block text-[12px] font-semibold text-[var(--muted)]"
+                        >Alamat Pengirim</label
+                    >
+                    <textarea
+                        v-model="form.shipper_address"
+                        rows="2"
+                        required
+                        class="pache-input"
+                    />
                 </div>
             </div>
 
             <div class="pache-panel space-y-3 p-5">
-                <h2 class="text-[16px] font-[650] text-[var(--ink)]">4. Data Penerima (Consignee)</h2>
+                <h2 class="text-[16px] font-[650] text-[var(--ink)]">
+                    5. Data Penerima (Consignee)
+                </h2>
                 <div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
                     <div>
-                        <label class="mb-1 block text-[12px] font-semibold text-[var(--muted)]">Nama Penerima</label>
-                        <input v-model="form.consignee_name" type="text" required class="pache-input" placeholder="PT / Nama Lengkap" />
+                        <label
+                            class="mb-1 block text-[12px] font-semibold text-[var(--muted)]"
+                            >Nama Penerima</label
+                        >
+                        <input
+                            v-model="form.consignee_name"
+                            type="text"
+                            required
+                            class="pache-input"
+                            placeholder="PT / Nama Lengkap"
+                        />
                     </div>
                     <div>
-                        <label class="mb-1 block text-[12px] font-semibold text-[var(--muted)]">No. HP Penerima</label>
-                        <input v-model="form.consignee_phone" type="text" required class="pache-input tabular-nums" placeholder="0812xxxxxxxx" />
+                        <label
+                            class="mb-1 block text-[12px] font-semibold text-[var(--muted)]"
+                            >No. HP Penerima</label
+                        >
+                        <input
+                            v-model="form.consignee_phone"
+                            type="text"
+                            required
+                            class="pache-input tabular-nums"
+                            placeholder="0812xxxxxxxx"
+                        />
                     </div>
                 </div>
                 <div>
-                    <label class="mb-1 block text-[12px] font-semibold text-[var(--muted)]">Alamat Lengkap Tujuan</label>
-                    <textarea v-model="form.consignee_address" rows="2" required class="pache-input" placeholder="Jalan, No., Kecamatan, Kota" />
+                    <label
+                        class="mb-1 block text-[12px] font-semibold text-[var(--muted)]"
+                        >Alamat Lengkap Tujuan</label
+                    >
+                    <textarea
+                        v-model="form.consignee_address"
+                        rows="2"
+                        required
+                        class="pache-input"
+                        placeholder="Jalan, No., Kecamatan, Kota"
+                    />
                 </div>
             </div>
         </section>
 
-        <!-- Section 4: Multi-Koli Table -->
-        <section class="pache-panel space-y-4 p-5">
-            <div class="flex items-center justify-between">
-                <div>
-                    <h2 class="text-[16px] font-[650] text-[var(--ink)]">5. Rincian Koli &amp; Dimensi</h2>
-                    <p class="text-[12px] text-[var(--muted)]">Berat aktual dan dimensi P×L×T langsung menghitung berat tagih secara reaktif.</p>
-                </div>
-                <button type="button" @click="addColli" class="pache-btn-outline">
-                    <Plus class="h-4 w-4" />
-                    <span>Tambah Koli</span>
-                </button>
-            </div>
-
-            <div class="overflow-x-auto">
-                <table class="pache-table">
-                    <thead>
-                        <tr>
-                            <th>Deskripsi Isi Koli</th>
-                            <th class="w-20">Qty</th>
-                            <th class="w-28">Berat (kg)</th>
-                            <th class="w-24">P (cm)</th>
-                            <th class="w-24">L (cm)</th>
-                            <th class="w-24">T (cm)</th>
-                            <th class="w-12" />
-                        </tr>
-                    </thead>
-                    <tbody>
-                        <tr v-for="(item, idx) in form.items" :key="idx">
-                            <td>
-                                <input v-model="item.description" type="text" required class="pache-input" placeholder="Isi paket" />
-                            </td>
-                            <td>
-                                <input v-model.number="item.qty" type="number" min="1" required class="pache-input tabular-nums" />
-                            </td>
-                            <td>
-                                <input v-model.number="item.actual_weight_kg" type="number" min="0.1" step="0.1" required class="pache-input tabular-nums" />
-                            </td>
-                            <td>
-                                <input v-model.number="item.length_cm" type="number" min="1" required class="pache-input tabular-nums" />
-                            </td>
-                            <td>
-                                <input v-model.number="item.width_cm" type="number" min="1" required class="pache-input tabular-nums" />
-                            </td>
-                            <td>
-                                <input v-model.number="item.height_cm" type="number" min="1" required class="pache-input tabular-nums" />
-                            </td>
-                            <td>
-                                <button
-                                    type="button"
-                                    @click="removeColli(idx)"
-                                    :disabled="form.items.length === 1"
-                                    class="rounded-lg p-2 text-[var(--muted)] hover:bg-[#fef2f2] hover:text-[#b42318] disabled:opacity-30"
-                                >
-                                    <Trash2 class="h-4 w-4" />
-                                </button>
-                            </td>
-                        </tr>
-                    </tbody>
-                </table>
-            </div>
-
-            <div class="flex flex-wrap items-center justify-between gap-4 border-t border-[var(--hairline)] pt-4">
-                <div class="text-[13px] text-[var(--muted)] tabular-nums">
-                    Ongkir: <strong class="text-[var(--ink)]">{{ formatIdr(estimatedShippingCost) }}</strong> ·
-                    Asuransi: <strong class="text-[var(--ink)]">{{ formatIdr(estimatedInsurance) }}</strong> ·
-                    Total: <strong class="text-[16px] text-[var(--brand-blue)]">{{ formatIdr(estimatedTotal) }}</strong>
-                </div>
-                <button type="submit" :disabled="form.processing" class="pache-btn-primary px-6">
-                    {{ form.processing ? 'Menerbitkan AWB...' : 'Terbitkan Resi (AWB Non-COD)' }}
-                </button>
-            </div>
-        </section>
+        <OmsColliTableSection
+            :items="form.items"
+            :processing="form.processing"
+            :estimated-shipping-cost="estimatedShippingCost"
+            :estimated-insurance="estimatedInsurance"
+            :estimated-surcharge-total="estimatedSurchargeTotal"
+            :estimated-add-charge-total="estimatedAddChargeTotal"
+            :estimated-total="estimatedTotal"
+            @add-colli="addColli"
+            @remove-colli="removeColli"
+            @update-colli-field="updateColliField"
+        />
     </form>
 </template>
