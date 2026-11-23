@@ -18,7 +18,9 @@ export function useChargeableWeight(
         const div = Math.max(1, divisor.value || 6000);
         const totalActual = items.value.reduce(
             (sum, item) =>
-                sum + Math.max(0, Number(item.actual_weight_kg) || 0) * Math.max(1, Number(item.qty) || 1),
+                sum +
+                Math.max(0, Number(item.actual_weight_kg) || 0) *
+                    Math.max(1, Number(item.qty) || 1),
             0,
         );
 
