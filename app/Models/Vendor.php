@@ -65,4 +65,12 @@ class Vendor extends Model
     {
         return $this->hasMany(Manifest::class);
     }
+
+    /**
+     * @return HasMany<VendorBill, $this>
+     */
+    public function bills(): HasMany
+    {
+        return $this->hasMany(VendorBill::class);
+    }
 }

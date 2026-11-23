@@ -17,28 +17,36 @@ final readonly class MarkInvoicePaidUseCase
         private FinancialLedgerRecorder $ledgerRecorder,
     ) {}
 
-    public function execute(Invoice $invoice, ?int $actorId = null): Invoice
+    public function execute(Invoice $invoice, ?int $actorId = null, ?string $paymentReference = null): Invoice
     {
-        return $this->transactions->run(function () use ($invoice, $actorId): Invoice {
+        return $this->transactions->run(function () use ($invoice, $actorId, $paymentReference): Invoice {
             $locked = $this->invoices->findForUpdateOrFail($invoice->id);
 
             if ($locked->status === 'paid') {
                 return $locked;
             }
 
+            $cleanRef = $paymentReference !== null && trim($paymentReference) !== ''
+                ? trim($paymentReference)
+                : null;
+
             $locked->update([
                 'status' => 'paid',
                 'paid_at' => now(),
+                'payment_reference' => $cleanRef,
             ]);
+
+            $channel = $locked->invoice_type === 'manual' ? 'manual_invoice' : 'top_invoice';
+            $typeLabel = $locked->invoice_type === 'manual' ? 'Manual' : 'B2B TOP';
 
             $this->ledgerRecorder->recordCredit(
                 prefix: 'FIN-INV',
                 branchId: null,
-                channel: 'top_invoice',
+                channel: $channel,
                 amount: (float) $locked->total_amount,
                 referenceType: 'invoice',
                 referenceId: $locked->id,
-                description: "Pelunasan Invoice B2B TOP {$locked->invoice_number} ({$locked->customer?->name})",
+                description: "Pelunasan Invoice {$typeLabel} {$locked->invoice_number} ({$locked->customer?->name})",
                 actorId: $actorId,
             );
 

@@ -11,6 +11,7 @@ use App\Models\Invoice;
 use App\Models\Manifest;
 use App\Models\Shipment;
 use App\Models\Vehicle;
+use App\Models\VendorBill;
 use App\Modules\Shared\Domain\Enums\PaymentMethod;
 use App\Modules\Shared\Domain\Enums\PaymentStatus;
 use App\Modules\Shared\Domain\Enums\ShipmentStatus;
@@ -100,8 +101,39 @@ final class DashboardController extends Controller
                 'href' => '/master',
             ]);
 
+        $invoices = Invoice::query()
+            ->with('customer:id,name')
+            ->where('invoice_number', 'like', "%{$q}%")
+            ->limit(3)
+            ->get(['id', 'invoice_number', 'customer_id', 'status'])
+            ->map(static fn (Invoice $inv): array => [
+                'type' => 'INVOICE',
+                'title' => $inv->invoice_number,
+                'subtitle' => ($inv->customer->name ?? '-').' · '.strtoupper($inv->status),
+                'href' => "/finance/invoices/{$inv->id}",
+            ]);
+
+        $vendorBills = VendorBill::query()
+            ->with('vendor:id,name')
+            ->where('bill_number', 'like', "%{$q}%")
+            ->orWhere('vendor_invoice_no', 'like', "%{$q}%")
+            ->limit(3)
+            ->get(['id', 'bill_number', 'vendor_invoice_no', 'vendor_id', 'status'])
+            ->map(static fn (VendorBill $bill): array => [
+                'type' => 'VENDOR BILL',
+                'title' => $bill->bill_number,
+                'subtitle' => ($bill->vendor->name ?? '-').($bill->vendor_invoice_no ? " · {$bill->vendor_invoice_no}" : ''),
+                'href' => "/finance/vendor-bills/{$bill->id}",
+            ]);
+
         return response()->json([
-            'items' => $shipments->concat($manifests)->concat($customers)->values()->all(),
+            'items' => $shipments
+                ->concat($manifests)
+                ->concat($customers)
+                ->concat($invoices)
+                ->concat($vendorBills)
+                ->values()
+                ->all(),
         ]);
     }
 

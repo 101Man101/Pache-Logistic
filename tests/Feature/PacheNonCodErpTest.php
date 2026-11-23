@@ -7,6 +7,7 @@ namespace Tests\Feature;
 use App\Models\Branch;
 use App\Models\Customer;
 use App\Models\Driver;
+use App\Models\Invoice;
 use App\Models\Manifest;
 use App\Models\Product;
 use App\Models\Shipment;
@@ -17,6 +18,7 @@ use App\Models\Tariff;
 use App\Models\User;
 use App\Models\Vehicle;
 use App\Models\Vendor;
+use App\Models\VendorBill;
 use App\Models\Warehouse;
 use App\Modules\Shared\Domain\Enums\PaymentMethod;
 use App\Modules\Shared\Domain\Enums\PaymentStatus;
@@ -409,6 +411,154 @@ class PacheNonCodErpTest extends TestCase
             'status' => 'in_transit',
             'location' => 'Checkpoint Tol Palimanan',
             'description' => 'Linehaul melaju ke hub Surabaya',
+        ]);
+    }
+
+    public function test_manual_invoice_detail_print_and_vendor_bill_ap_workflow(): void
+    {
+        /** @var User $kasir */
+        $kasir = User::query()->where('email', 'kasir@pachelogistic.id')->firstOrFail();
+        /** @var User $oms */
+        $oms = User::query()->where('email', 'oms@pachelogistic.id')->firstOrFail();
+        /** @var User $admin */
+        $admin = User::query()->where('email', 'admin@pachelogistic.id')->firstOrFail();
+
+        $cust = Customer::query()->where('code', 'CUST-RTL-001')->firstOrFail();
+        $vendor = Vendor::query()->where('code', 'VND-LHL-001')->firstOrFail();
+        $jkt = Branch::query()->where('code', 'JKT')->firstOrFail();
+        $sby = Branch::query()->where('code', 'SBY')->firstOrFail();
+
+        // 1. Seeded Invoice detail & print pages load cleanly
+        $seededInvoice = Invoice::query()->where('invoice_number', 'INV-PCH-202611-0001')->firstOrFail();
+        $this->actingAs($kasir)->get("/finance/invoices/{$seededInvoice->id}")->assertOk();
+        $this->actingAs($kasir)->get("/finance/invoices/{$seededInvoice->id}/print")->assertOk();
+
+        // 2. Unauthorized OMS user blocked from finance manual invoice & vendor bill endpoints
+        $this->actingAs($oms)->post('/finance/invoices/manual', [])->assertForbidden();
+        $this->actingAs($oms)->post('/finance/vendor-bills', [])->assertForbidden();
+
+        // 3. Create Manual AR Invoice with 2 lines + PPN 11% (without PPh 23)
+        // Line 1: 2 * 500,000 = 1,000,000; Line 2: 1 * 250,000 = 250,000 => Subtotal = 1,250,000
+        // PPN 11% = 137,500; PPh23 = 0 => Total = 1,387,500
+        $this->actingAs($kasir)->post('/finance/invoices/manual', [
+            'customer_id' => $cust->id,
+            'period_start' => '2026-11-01',
+            'period_end' => '2026-11-23',
+            'due_date' => '2026-12-07',
+            'apply_ppn' => true,
+            'apply_pph23' => false,
+            'notes' => 'Tagihan jasa sewa staging WMS & charter',
+            'lines' => [
+                ['description' => 'Charter Blindvan JKT–BDG', 'quantity' => 2, 'unit' => 'trip', 'unit_price' => 500000],
+                ['description' => 'Handling & Repacking Pallet', 'quantity' => 1, 'unit' => 'lot', 'unit_price' => 250000],
+            ],
+        ])->assertRedirect();
+
+        /** @var Invoice $manualInvoice */
+        $manualInvoice = Invoice::query()->where('invoice_type', 'manual')->latest('id')->firstOrFail();
+        $this->assertEquals(1250000.0, (float) $manualInvoice->subtotal);
+        $this->assertEquals(137500.0, (float) $manualInvoice->ppn_amount);
+        $this->assertEquals(0.0, (float) $manualInvoice->pph23_amount);
+        $this->assertEquals(1387500.0, (float) $manualInvoice->total_amount);
+        $this->assertCount(2, $manualInvoice->lines);
+
+        $this->actingAs($kasir)->get("/finance/invoices/{$manualInvoice->id}")->assertOk();
+        $this->actingAs($kasir)->get("/finance/invoices/{$manualInvoice->id}/print")->assertOk();
+
+        // Mark manual invoice paid -> records credit entry in financial_ledger
+        $this->actingAs($kasir)->post("/finance/invoices/{$manualInvoice->id}/mark-paid", [
+            'payment_reference' => 'TRF-BCA-MAN-001',
+        ])->assertSessionHas('success');
+
+        $manualInvoice->refresh();
+        $this->assertEquals('paid', $manualInvoice->status);
+        $this->assertEquals('TRF-BCA-MAN-001', $manualInvoice->payment_reference);
+        $this->assertDatabaseHas('financial_ledger', [
+            'channel' => 'manual_invoice',
+            'direction' => 'credit',
+            'reference_type' => 'invoice',
+            'reference_id' => $manualInvoice->id,
+            'amount' => 1387500.0,
+        ]);
+
+        // 4. Create Shipment with vendor_cost to test pulling AWB vendor cost into Vendor Bill (AP)
+        $this->actingAs($admin)->post('/oms/shipments', [
+            'customer_id' => $cust->id,
+            'origin_branch_id' => $jkt->id,
+            'destination_branch_id' => $sby->id,
+            'vendor_id' => $vendor->id,
+            'vendor_awb_no' => 'VND-LHL-8801',
+            'vendor_cost' => 300000,
+            'shipper_name' => $cust->name,
+            'shipper_phone' => $cust->phone,
+            'shipper_address' => $cust->address,
+            'consignee_name' => 'Tujuan Vendor Bill',
+            'consignee_phone' => '081266665555',
+            'consignee_address' => 'Surabaya',
+            'service_type' => 'REG',
+            'payment_method' => PaymentMethod::CASH->value,
+            'cash_received' => true,
+            'items' => [
+                ['description' => 'Karton Komponen', 'qty' => 1, 'actual_weight_kg' => 10, 'length_cm' => 30, 'width_cm' => 30, 'height_cm' => 30],
+            ],
+        ])->assertRedirect();
+
+        /** @var Shipment $vendorShipment */
+        $vendorShipment = Shipment::query()->latest('id')->firstOrFail();
+
+        // Create AP Vendor Bill linked to shipment vendor_cost + extra fee
+        // Subtotal = 300,000 + 100,000 = 400,000; PPN 11% = 44,000; PPh23 2% = 8,000 => Total = 436,000
+        $this->actingAs($kasir)->post('/finance/vendor-bills', [
+            'vendor_id' => $vendor->id,
+            'branch_id' => $jkt->id,
+            'vendor_invoice_no' => 'MTN-2026-9901',
+            'bill_date' => '2026-11-23',
+            'due_date' => '2026-12-23',
+            'apply_ppn' => true,
+            'apply_pph23' => true,
+            'notes' => 'Tagihan linehaul mitra bulan November',
+            'lines' => [
+                ['shipment_id' => $vendorShipment->id, 'description' => "Biaya Vendor AWB {$vendorShipment->awb_number}", 'quantity' => 1, 'unit' => 'resi', 'unit_price' => 300000],
+                ['description' => 'Biaya Bongkar Tambahan', 'quantity' => 1, 'unit' => 'jasa', 'unit_price' => 100000],
+            ],
+        ])->assertRedirect();
+
+        /** @var VendorBill $bill */
+        $bill = VendorBill::query()->where('vendor_invoice_no', 'MTN-2026-9901')->firstOrFail();
+        $this->assertEquals(400000.0, (float) $bill->subtotal);
+        $this->assertEquals(44000.0, (float) $bill->ppn_amount);
+        $this->assertEquals(8000.0, (float) $bill->pph23_amount);
+        $this->assertEquals(436000.0, (float) $bill->total_amount);
+
+        // Prevent double AP billing for same shipment vendor cost
+        $this->actingAs($kasir)->post('/finance/vendor-bills', [
+            'vendor_id' => $vendor->id,
+            'bill_date' => '2026-11-23',
+            'due_date' => '2026-12-23',
+            'apply_ppn' => false,
+            'apply_pph23' => false,
+            'lines' => [
+                ['shipment_id' => $vendorShipment->id, 'description' => 'Duplikat Tagihan AWB', 'quantity' => 1, 'unit' => 'resi', 'unit_price' => 300000],
+            ],
+        ])->assertSessionHas('error');
+
+        $this->actingAs($kasir)->get("/finance/vendor-bills/{$bill->id}")->assertOk();
+        $this->actingAs($kasir)->get("/finance/vendor-bills/{$bill->id}/print")->assertOk();
+
+        // Mark Vendor Bill Paid -> records DEBIT entry in financial_ledger
+        $this->actingAs($kasir)->post("/finance/vendor-bills/{$bill->id}/mark-paid", [
+            'payment_reference' => 'OUT-BCA-AP-771',
+        ])->assertSessionHas('success');
+
+        $bill->refresh();
+        $this->assertEquals('paid', $bill->status);
+        $this->assertEquals('OUT-BCA-AP-771', $bill->payment_reference);
+        $this->assertDatabaseHas('financial_ledger', [
+            'channel' => 'vendor_ap',
+            'direction' => 'debit',
+            'reference_type' => 'vendor_bill',
+            'reference_id' => $bill->id,
+            'amount' => 436000.0,
         ]);
     }
 }

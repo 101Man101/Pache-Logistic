@@ -24,4 +24,10 @@ interface InvoiceRepository
      * @param  iterable<int, Shipment>  $shipments
      */
     public function createWithLines(array $attributes, iterable $shipments): Invoice;
+
+    /**
+     * @param  array<string, mixed>  $attributes
+     * @param  list<array<string, mixed>>  $lines
+     */
+    public function createManualWithLines(array $attributes, array $lines): Invoice;
 }

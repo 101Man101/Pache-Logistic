@@ -22,6 +22,7 @@ final readonly class EloquentInvoiceRepository implements InvoiceRepository
     public function unbilledDeliveredTopShipments(int $customerId): Collection
     {
         return Shipment::query()
+            ->with(['originBranch:id,code', 'destinationBranch:id,code'])
             ->where('customer_id', $customerId)
             ->where('payment_method', PaymentMethod::TOP->value)
             ->where('status', ShipmentStatus::DELIVERED->value)
@@ -47,12 +48,32 @@ final readonly class EloquentInvoiceRepository implements InvoiceRepository
         $invoice = Invoice::query()->create($attributes);
 
         foreach ($shipments as $shipment) {
+            $origin = $shipment->originBranch->code ?? '?';
+            $dest = $shipment->destinationBranch->code ?? '?';
+            $amount = (float) $shipment->total_amount;
+
             $invoice->lines()->create([
                 'shipment_id' => $shipment->id,
-                'amount' => $shipment->total_amount,
+                'description' => "Pengiriman {$shipment->awb_number} ({$origin} → {$dest} · {$shipment->service_type} · {$shipment->chargeable_weight_kg} kg)",
+                'quantity' => 1,
+                'unit' => 'resi',
+                'unit_price' => $amount,
+                'amount' => $amount,
             ]);
         }
 
         return $invoice->load(['customer', 'lines.shipment']);
+    }
+
+    public function createManualWithLines(array $attributes, array $lines): Invoice
+    {
+        /** @var Invoice $invoice */
+        $invoice = Invoice::query()->create($attributes);
+
+        foreach ($lines as $line) {
+            $invoice->lines()->create($line);
+        }
+
+        return $invoice->load(['customer', 'lines']);
     }
 }

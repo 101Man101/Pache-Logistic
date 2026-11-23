@@ -12,6 +12,8 @@ void createInertiaApp({
             name === 'Welcome' ||
             name === 'PublicTracking' ||
             name === 'oms/Label' ||
+            name === 'finance/InvoicePrint' ||
+            name === 'finance/VendorBillPrint' ||
             name.startsWith('auth/')
         ) {
             return null;

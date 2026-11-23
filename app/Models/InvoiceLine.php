@@ -10,7 +10,11 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 /**
  * @property int $id
  * @property int $invoice_id
- * @property int $shipment_id
+ * @property int|null $shipment_id
+ * @property string|null $description
+ * @property string $quantity
+ * @property string $unit
+ * @property string $unit_price
  * @property string $amount
  */
 class InvoiceLine extends Model
@@ -18,6 +22,10 @@ class InvoiceLine extends Model
     protected $fillable = [
         'invoice_id',
         'shipment_id',
+        'description',
+        'quantity',
+        'unit',
+        'unit_price',
         'amount',
     ];
 

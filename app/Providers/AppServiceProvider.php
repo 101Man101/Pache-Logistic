@@ -3,7 +3,9 @@
 namespace App\Providers;
 
 use App\Modules\FIN\Domain\Repositories\InvoiceRepository;
+use App\Modules\FIN\Domain\Repositories\VendorBillRepository;
 use App\Modules\FIN\Infrastructure\Persistence\EloquentInvoiceRepository;
+use App\Modules\FIN\Infrastructure\Persistence\EloquentVendorBillRepository;
 use App\Modules\MDM\Domain\Repositories\MasterDataRepository;
 use App\Modules\MDM\Infrastructure\Persistence\EloquentMasterDataRepository;
 use App\Modules\OMS\Domain\Repositories\ShipmentRepository;
@@ -38,6 +40,7 @@ class AppServiceProvider extends ServiceProvider
         $this->app->bind(InventoryLedgerRepository::class, EloquentInventoryLedgerRepository::class);
         $this->app->bind(ManifestRepository::class, EloquentManifestRepository::class);
         $this->app->bind(InvoiceRepository::class, EloquentInvoiceRepository::class);
+        $this->app->bind(VendorBillRepository::class, EloquentVendorBillRepository::class);
         $this->app->bind(MasterDataRepository::class, EloquentMasterDataRepository::class);
     }
 

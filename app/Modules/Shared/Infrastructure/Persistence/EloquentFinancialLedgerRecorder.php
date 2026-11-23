@@ -19,6 +19,33 @@ final readonly class EloquentFinancialLedgerRecorder implements FinancialLedgerR
         string $description,
         ?int $actorId = null,
     ): FinancialLedger {
+        return $this->recordEntry('credit', $prefix, $branchId, $channel, $amount, $referenceType, $referenceId, $description, $actorId);
+    }
+
+    public function recordDebit(
+        string $prefix,
+        ?int $branchId,
+        string $channel,
+        float $amount,
+        string $referenceType,
+        int $referenceId,
+        string $description,
+        ?int $actorId = null,
+    ): FinancialLedger {
+        return $this->recordEntry('debit', $prefix, $branchId, $channel, $amount, $referenceType, $referenceId, $description, $actorId);
+    }
+
+    private function recordEntry(
+        string $direction,
+        string $prefix,
+        ?int $branchId,
+        string $channel,
+        float $amount,
+        string $referenceType,
+        int $referenceId,
+        string $description,
+        ?int $actorId = null,
+    ): FinancialLedger {
         $entryCode = $prefix.'-'.now()->format('ymdHis').'-'.str_pad((string) $referenceId, 4, '0', STR_PAD_LEFT);
 
         /** @var FinancialLedger */
@@ -26,7 +53,7 @@ final readonly class EloquentFinancialLedgerRecorder implements FinancialLedgerR
             'entry_code' => $entryCode,
             'branch_id' => $branchId,
             'channel' => $channel,
-            'direction' => 'credit',
+            'direction' => $direction,
             'amount' => $amount,
             'reference_type' => $referenceType,
             'reference_id' => $referenceId,

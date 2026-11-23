@@ -62,11 +62,19 @@ Route::middleware(['auth', 'verified'])->group(function (): void {
         Route::post('/manifests/{manifest}/arrive', [ManifestController::class, 'arrive'])->name('manifests.arrive');
     });
 
-    // FIN — Finance Non-COD (Cash Loket, Online Payment PG, & B2B TOP Auto-Invoicing)
+    // FIN — Finance Non-COD (Cash Loket, Online Payment PG, AR Invoices & AP Vendor Bills)
     Route::prefix('finance')->name('finance.')->middleware('role:super_admin,finance_cashier')->group(function (): void {
         Route::get('/', [FinanceController::class, 'index'])->name('index');
         Route::post('/invoices/generate', [FinanceController::class, 'generateInvoice'])->name('invoices.generate');
+        Route::post('/invoices/manual', [FinanceController::class, 'storeManualInvoice'])->name('invoices.manual');
+        Route::get('/invoices/{invoice}', [FinanceController::class, 'showInvoice'])->name('invoices.show');
+        Route::get('/invoices/{invoice}/print', [FinanceController::class, 'printInvoice'])->name('invoices.print');
         Route::post('/invoices/{invoice}/mark-paid', [FinanceController::class, 'markPaid'])->name('invoices.mark-paid');
+
+        Route::post('/vendor-bills', [FinanceController::class, 'storeVendorBill'])->name('vendor-bills.store');
+        Route::get('/vendor-bills/{vendorBill}', [FinanceController::class, 'showVendorBill'])->name('vendor-bills.show');
+        Route::get('/vendor-bills/{vendorBill}/print', [FinanceController::class, 'printVendorBill'])->name('vendor-bills.print');
+        Route::post('/vendor-bills/{vendorBill}/mark-paid', [FinanceController::class, 'markVendorBillPaid'])->name('vendor-bills.mark-paid');
     });
 
     // MDM — Master Data (Multi-Branch, Customers TOP, Rate Engine, Surcharges, Vendors)

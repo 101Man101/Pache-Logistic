@@ -18,4 +18,15 @@ interface FinancialLedgerRecorder
         string $description,
         ?int $actorId = null,
     ): FinancialLedger;
+
+    public function recordDebit(
+        string $prefix,
+        ?int $branchId,
+        string $channel,
+        float $amount,
+        string $referenceType,
+        int $referenceId,
+        string $description,
+        ?int $actorId = null,
+    ): FinancialLedger;
 }
