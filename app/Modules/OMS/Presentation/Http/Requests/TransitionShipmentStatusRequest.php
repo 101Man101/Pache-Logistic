@@ -24,6 +24,7 @@ final class TransitionShipmentStatusRequest extends FormRequest
             'status' => ['required', Rule::in(array_map(static fn (ShipmentStatus $s): string => $s->value, ShipmentStatus::cases()))],
             'location' => ['nullable', 'string', 'max:255'],
             'description' => ['nullable', 'string', 'max:500'],
+            'manual' => ['nullable', 'boolean'],
         ];
     }
 }

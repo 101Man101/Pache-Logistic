@@ -159,36 +159,29 @@ function arriveManifest(manifestId: number): void {
     <div class="space-y-6">
         <div class="flex flex-wrap items-end justify-between gap-4">
             <div>
-                <p
-                    class="text-[10.5px] font-bold tracking-[0.14em] text-[var(--brand-blue)] uppercase"
-                >
+                <p class="pache-eyebrow">
                     TRANSPORTATION &amp; FLEET MANAGEMENT (TMS)
                 </p>
-                <h1
-                    class="mt-1 text-[23px] font-[650] tracking-[-0.03em] text-[var(--ink)]"
-                >
+                <h1 class="pache-page-title">
                     Konsolidasi Manifest, Scan Bagging &amp; Kepatuhan Armada
                 </h1>
             </div>
-            <div
-                class="inline-flex items-center gap-2 rounded-[10px] border border-[#bfdbfe] bg-[#eff6ff] px-3 py-1.5 text-[12px] font-bold text-[#1d4ed8] dark:border-[#1d4ed8]/40 dark:bg-[#1e3a8a]/30 dark:text-[#93c5fd]"
-            >
+            <div class="pache-status-pill is-info px-3 py-1.5 text-[12px]">
                 <ShieldCheck class="h-4 w-4" />
                 <span
-                    >BR-08 Active: Resi Pending Otomatis Ditolak saat Scan</span
+                    >Dispatch Gate Aktif: Resi Belum Lunas Ditolak saat
+                    Scan</span
                 >
             </div>
         </div>
 
         <div class="grid grid-cols-1 gap-5 lg:grid-cols-[0.9fr_1.1fr]">
-            <!-- Create Manifest Form (BR-06 Enforcement) -->
+            <!-- Create Manifest Form -->
             <section class="pache-panel p-5">
-                <h2 class="text-[16px] font-[650] text-[var(--ink)]">
-                    Buat Manifest Linehaul Baru
-                </h2>
+                <h2 class="pache-section-title">Buat Manifest Linehaul Baru</h2>
                 <p class="mt-1 text-[12.5px] text-[var(--muted)]">
-                    Sistem memblokir kendaraan/supir yang STNK, Uji KIR, atau
-                    SIM-nya kedaluwarsa (BR-06).
+                    Sistem memblokir kendaraan atau pengemudi dengan masa
+                    berlaku STNK, Uji KIR, atau SIM yang kedaluwarsa.
                 </p>
 
                 <form @submit.prevent="createManifest" class="mt-4 space-y-3.5">
@@ -357,8 +350,8 @@ function arriveManifest(manifestId: number): void {
             <section class="pache-panel p-5">
                 <div class="flex items-center justify-between">
                     <div>
-                        <h2 class="text-[16px] font-[650] text-[var(--ink)]">
-                            Scan Bagging ke Manifest (FR-TMS-02)
+                        <h2 class="pache-section-title">
+                            Scan Bagging ke Manifest
                         </h2>
                         <p class="mt-0.5 text-[12.5px] text-[var(--muted)]">
                             Tembakkan barcode gun ke resi atau klik resi siap
@@ -567,7 +560,7 @@ function arriveManifest(manifestId: number): void {
                             v-if="m.status === 'departed'"
                             type="button"
                             @click="arriveManifest(m.id)"
-                            class="pache-btn-primary border-[#15803d] bg-[#15803d]"
+                            class="pache-btn-success"
                         >
                             <CheckCircle2 class="h-3.5 w-3.5" />
                             <span>Konfirmasi Tiba &amp; Unloading Hub</span>
@@ -577,11 +570,11 @@ function arriveManifest(manifestId: number): void {
             </div>
         </section>
 
-        <!-- Fleet Compliance Table (BR-06) -->
+        <!-- Fleet Compliance Table -->
         <section class="pache-panel overflow-hidden">
             <div class="border-b border-[var(--hairline)] px-5 py-4">
-                <h2 class="text-[16px] font-[650] text-[var(--ink)]">
-                    Kepatuhan Dokumen Armada (STNK &amp; Uji KIR — BR-06)
+                <h2 class="pache-section-title">
+                    Kepatuhan Dokumen Armada (STNK &amp; Uji KIR)
                 </h2>
             </div>
             <div class="overflow-x-auto">
@@ -610,20 +603,20 @@ function arriveManifest(manifestId: number): void {
                             <td>
                                 <span
                                     v-if="v.is_expired"
-                                    class="inline-flex items-center gap-1 rounded-[6px] border border-[#fecaca] bg-[#fef2f2] px-2 py-0.5 text-[11px] font-bold text-[#991b1b]"
+                                    class="pache-status-pill is-danger"
                                 >
                                     <AlertTriangle class="h-3 w-3" />
                                     DIBLOKIR (EXPIRED)
                                 </span>
                                 <span
                                     v-else-if="v.expiring_soon"
-                                    class="rounded-[6px] border border-[#e7cfa8] bg-[#f8eddf] px-2 py-0.5 text-[11px] font-bold text-[#92400e]"
+                                    class="pache-status-pill is-warning"
                                 >
                                     PERINGATAN H-30
                                 </span>
                                 <span
                                     v-else
-                                    class="rounded-[6px] border border-[#bbf7d0] bg-[#ecfdf3] px-2 py-0.5 text-[11px] font-bold text-[#15803d]"
+                                    class="pache-status-pill is-success"
                                 >
                                     LAIK JALAN
                                 </span>

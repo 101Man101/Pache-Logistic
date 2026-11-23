@@ -27,12 +27,13 @@ final readonly class TransitionShipmentStatusUseCase
         string $description,
         ?int $branchId = null,
         ?int $actorId = null,
+        bool $allowManual = false,
     ): Shipment {
-        return $this->transactions->run(function () use ($shipment, $nextStatus, $location, $description, $branchId, $actorId): Shipment {
+        return $this->transactions->run(function () use ($shipment, $nextStatus, $location, $description, $branchId, $actorId, $allowManual): Shipment {
             $locked = $this->shipments->findForUpdateOrFail($shipment->id);
 
-            // BR-03: Strict Shipment State Machine
-            if (! $locked->status->canTransitionTo($nextStatus)) {
+            // BR-03: Strict Shipment State Machine unless explicitly updated manually
+            if (! $allowManual && ! $locked->status->canTransitionTo($nextStatus)) {
                 throw InvalidStatusTransitionException::between($locked->status, $nextStatus);
             }
 

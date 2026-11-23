@@ -36,7 +36,11 @@ const barcodeBars = computed(() => {
     const str = props.shipment.awb_number;
     for (let i = 0; i < str.length; i++) {
         const code = str.charCodeAt(i);
-        const widths = [(code % 3) + 1.5, ((code >> 2) % 2) + 1.2, ((code >> 4) % 3) + 1.4];
+        const widths = [
+            (code % 3) + 1.5,
+            ((code >> 2) % 2) + 1.2,
+            ((code >> 4) % 3) + 1.4,
+        ];
         for (const w of widths) {
             bars.push({ x, w });
             x += w + (((code + i) % 2) + 1.6);
@@ -54,8 +58,13 @@ function printLabel(): void {
     <Head :title="`Label A6 — ${shipment.awb_number}`" />
 
     <div class="min-h-screen bg-[#edf3fa] px-4 py-8 text-[#111111]">
-        <div class="no-print mx-auto mb-5 flex max-w-[420px] items-center justify-between">
-            <Link :href="`/oms/shipments/${shipment.awb_number}`" class="pache-btn-outline">
+        <div
+            class="no-print mx-auto mb-5 flex max-w-[420px] items-center justify-between"
+        >
+            <Link
+                :href="`/oms/shipments/${shipment.awb_number}`"
+                class="pache-btn-outline"
+            >
                 <ArrowLeft class="h-4 w-4" />
                 <span>Kembali</span>
             </Link>
@@ -66,36 +75,59 @@ function printLabel(): void {
         </div>
 
         <!-- 100mm x 150mm Thermal Label Container -->
-        <div class="mx-auto w-[390px] overflow-hidden rounded-[8px] border-2 border-[#111111] bg-white shadow-lg print:m-0 print:w-[100mm] print:rounded-none print:shadow-none">
+        <div
+            class="mx-auto w-[390px] overflow-hidden rounded-[8px] border-2 border-[#111111] bg-white shadow-lg print:m-0 print:w-[100mm] print:rounded-none print:shadow-none"
+        >
             <!-- Header -->
-            <div class="flex items-center justify-between border-b-2 border-[#111111] px-4 py-3">
+            <div
+                class="flex items-center justify-between border-b-2 border-[#111111] px-4 py-3"
+            >
                 <PacheLogo compact />
                 <div class="text-right">
-                    <span class="inline-block bg-[#111111] px-2.5 py-1 text-[14px] font-black tracking-wider text-white">
+                    <span
+                        class="inline-block bg-[#111111] px-2.5 py-1 text-[14px] font-black tracking-wider text-white"
+                    >
                         {{ shipment.service_type }}
                     </span>
-                    <p class="mt-0.5 text-[10px] font-semibold text-[#596579] tabular-nums">
+                    <p
+                        class="mt-0.5 text-[10px] font-semibold text-[#596579] tabular-nums"
+                    >
                         {{ shipment.created_at }}
                     </p>
                 </div>
             </div>
 
             <!-- Big Destination Hub Sort Code -->
-            <div class="grid grid-cols-[1fr_auto] items-center border-b-2 border-[#111111] px-4 py-3">
+            <div
+                class="grid grid-cols-[1fr_auto] items-center border-b-2 border-[#111111] px-4 py-3"
+            >
                 <div>
-                    <p class="text-[10px] font-bold tracking-[0.12em] uppercase text-[#596579]">
+                    <p
+                        class="text-[10px] font-bold tracking-[0.12em] text-[#596579] uppercase"
+                    >
                         SORTING HUB TUJUAN
                     </p>
-                    <p class="text-[36px] leading-none font-black tracking-[-0.03em] text-[#111111]">
+                    <p
+                        class="text-[36px] leading-none font-black tracking-[-0.03em] text-[#111111]"
+                    >
                         {{ shipment.dest_code }}
                     </p>
-                    <p class="mt-0.5 text-[12px] font-bold uppercase">{{ shipment.dest_city }}</p>
+                    <p class="mt-0.5 text-[12px] font-bold uppercase">
+                        {{ shipment.dest_city }}
+                    </p>
                 </div>
-                <div class="border-l-2 border-[#111111] pl-4 text-right tabular-nums">
-                    <p class="text-[10px] font-bold uppercase text-[#596579]">ASAL</p>
-                    <p class="text-[18px] font-black">{{ shipment.origin_code }}</p>
+                <div
+                    class="border-l-2 border-[#111111] pl-4 text-right tabular-nums"
+                >
+                    <p class="text-[10px] font-bold text-[#596579] uppercase">
+                        ASAL
+                    </p>
+                    <p class="text-[18px] font-black">
+                        {{ shipment.origin_code }}
+                    </p>
                     <p class="mt-1 text-[12px] font-bold">
-                        {{ shipment.chargeable_weight_kg }} kg · {{ shipment.colli_count }} Koli
+                        {{ shipment.chargeable_weight_kg }} kg ·
+                        {{ shipment.colli_count }} Koli
                     </p>
                 </div>
             </div>
@@ -118,20 +150,34 @@ function printLabel(): void {
                         fill="#111111"
                     />
                 </svg>
-                <p class="mt-1.5 text-[16px] font-black tracking-[0.08em] tabular-nums">
+                <p
+                    class="mt-1.5 text-[16px] font-black tracking-[0.08em] tabular-nums"
+                >
                     {{ shipment.awb_number }}
                 </p>
-                <p v-if="shipment.reference_no" class="text-[11px] font-semibold text-[#596579]">
+                <p
+                    v-if="shipment.reference_no"
+                    class="text-[11px] font-semibold text-[#596579]"
+                >
                     REF: {{ shipment.reference_no }}
                 </p>
             </div>
 
             <!-- STRICTLY NON-COD BANNER (FR-OMS-03) -->
-            <div class="border-b-2 border-[#111111] bg-[#111111] px-4 py-2.5 text-center text-white">
+            <div
+                class="border-b-2 border-[#111111] bg-[#111111] px-4 py-2.5 text-center text-white"
+            >
                 <p class="text-[13px] font-black tracking-[0.08em] uppercase">
-                    NON-COD · {{ shipment.payment_status === 'paid' ? `LUNAS (${shipment.payment_method_label})` : shipment.payment_method_label }}
+                    NON-COD ·
+                    {{
+                        shipment.payment_status === 'paid'
+                            ? `LUNAS (${shipment.payment_method_label})`
+                            : shipment.payment_method_label
+                    }}
                 </p>
-                <p class="text-[10px] font-semibold tracking-wide text-[#cbd5e1]">
+                <p
+                    class="text-[10px] font-semibold tracking-wide text-[#cbd5e1]"
+                >
                     KURIR DILARANG MENAGIH UANG TUNAI KEPADA PENERIMA
                 </p>
             </div>
@@ -139,15 +185,35 @@ function printLabel(): void {
             <!-- Consignee & Shipper -->
             <div class="divide-y divide-[#111111] text-[12px]">
                 <div class="px-4 py-3">
-                    <p class="text-[10px] font-bold tracking-[0.1em] uppercase text-[#596579]">PENERIMA (CONSIGNEE)</p>
-                    <p class="mt-0.5 text-[14px] font-black">{{ shipment.consignee_name }}</p>
-                    <p class="font-bold tabular-nums">{{ shipment.consignee_phone }}</p>
-                    <p class="mt-0.5 leading-snug">{{ shipment.consignee_address }}</p>
+                    <p
+                        class="text-[10px] font-bold tracking-[0.1em] text-[#596579] uppercase"
+                    >
+                        PENERIMA (CONSIGNEE)
+                    </p>
+                    <p class="mt-0.5 text-[14px] font-black">
+                        {{ shipment.consignee_name }}
+                    </p>
+                    <p class="font-bold tabular-nums">
+                        {{ shipment.consignee_phone }}
+                    </p>
+                    <p class="mt-0.5 leading-snug">
+                        {{ shipment.consignee_address }}
+                    </p>
                 </div>
                 <div class="px-4 py-3">
-                    <p class="text-[10px] font-bold tracking-[0.1em] uppercase text-[#596579]">PENGIRIM (SHIPPER)</p>
-                    <p class="mt-0.5 font-bold">{{ shipment.shipper_name }} ({{ shipment.shipper_phone }})</p>
-                    <p class="text-[11px] leading-snug text-[#596579]">{{ shipment.shipper_address }}</p>
+                    <p
+                        class="text-[10px] font-bold tracking-[0.1em] text-[#596579] uppercase"
+                    >
+                        PENGIRIM (SHIPPER)
+                    </p>
+                    <p class="mt-0.5 font-bold">
+                        {{ shipment.shipper_name }} ({{
+                            shipment.shipper_phone
+                        }})
+                    </p>
+                    <p class="text-[11px] leading-snug text-[#596579]">
+                        {{ shipment.shipper_address }}
+                    </p>
                 </div>
             </div>
         </div>

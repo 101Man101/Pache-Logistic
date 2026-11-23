@@ -264,10 +264,10 @@ function submit(): void {
             </Link>
 
             <Link
-                href="/tracking"
+                href="/"
                 class="rounded-full border border-[#dce5f1] bg-white/90 px-4 py-2 text-[12px] font-bold text-[#172b46] no-underline shadow-[0_6px_18px_-8px_rgba(23,43,70,0.16)] backdrop-blur-sm transition hover:border-[#2563eb] hover:text-[#2563eb] dark:border-[#303030] dark:bg-[#1a1a1a] dark:text-[#f4f4f5]"
             >
-                Cek Resi Publik &rarr;
+                &larr; Kembali ke Beranda
             </Link>
         </header>
 
@@ -290,7 +290,7 @@ function submit(): void {
                     <p
                         class="mt-1 text-center text-[12.5px] font-medium text-[#dbeafe]"
                     >
-                        Pache Logistic · Strictly Non-COD ERP
+                        Pache Logistic · Strictly Non-COD
                     </p>
 
                     <div

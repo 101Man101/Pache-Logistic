@@ -293,15 +293,11 @@ function submitBooking(): void {
                     <ArrowLeft class="h-3.5 w-3.5" />
                     <span>Kembali ke Daftar Resi</span>
                 </Link>
-                <h1
-                    class="mt-1 text-[23px] font-[650] tracking-[-0.03em] text-[var(--ink)]"
-                >
+                <h1 class="pache-page-title">
                     Buat Resi Pengiriman Baru (Multi-Koli · Non-COD)
                 </h1>
             </div>
-            <div
-                class="inline-flex items-center gap-2 rounded-[10px] border border-[#bfdbfe] bg-[#eff6ff] px-3 py-1.5 text-[12px] font-bold text-[#1d4ed8] dark:border-[#1d4ed8]/40 dark:bg-[#1e3a8a]/30 dark:text-[#93c5fd]"
-            >
+            <div class="pache-status-pill is-info px-3 py-1.5 text-[12px]">
                 <ShieldCheck class="h-4 w-4" />
                 <span>Hanya Online Payment, Cash Loket, &amp; B2B TOP</span>
             </div>

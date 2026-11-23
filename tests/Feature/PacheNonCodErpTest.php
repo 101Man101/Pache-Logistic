@@ -353,4 +353,62 @@ class PacheNonCodErpTest extends TestCase
         $this->actingAs($kasir)->get('/wms/inventory')->assertForbidden();
         $this->actingAs($kasir)->get('/tms/manifests')->assertForbidden();
     }
+
+    public function test_shipment_status_transition_handles_missing_location_and_manual_input(): void
+    {
+        /** @var User $admin */
+        $admin = User::query()->where('email', 'admin@pachelogistic.id')->firstOrFail();
+
+        // Test clicking quick button without location/description keys on PAID shipment (00001 is booked/paid or let's use 00002/new booked paid shipment)
+        $jkt = Branch::query()->where('code', 'JKT')->firstOrFail();
+        $sby = Branch::query()->where('code', 'SBY')->firstOrFail();
+        $cust = Customer::query()->where('code', 'CUST-RTL-001')->firstOrFail();
+
+        $this->actingAs($admin)->post('/oms/shipments', [
+            'customer_id' => $cust->id,
+            'origin_branch_id' => $jkt->id,
+            'destination_branch_id' => $sby->id,
+            'shipper_name' => $cust->name,
+            'shipper_phone' => $cust->phone,
+            'shipper_address' => $cust->address,
+            'consignee_name' => 'Penerima Manual Test',
+            'consignee_phone' => '081277778888',
+            'consignee_address' => 'Surabaya',
+            'service_type' => 'REG',
+            'payment_method' => PaymentMethod::CASH->value,
+            'cash_received' => true,
+            'items' => [
+                ['description' => 'Barang Uji', 'qty' => 1, 'actual_weight_kg' => 3, 'length_cm' => 20, 'width_cm' => 20, 'height_cm' => 20],
+            ],
+        ])->assertRedirect();
+
+        /** @var Shipment $shipment */
+        $shipment = Shipment::query()->latest('id')->firstOrFail();
+
+        // 1. Transition WITHOUT location & description keys (regression check for Undefined array key "location")
+        $this->actingAs($admin)
+            ->post("/oms/shipments/{$shipment->awb_number}/transition", ['status' => 'picked_up'])
+            ->assertSessionHas('success');
+
+        $this->assertEquals(ShipmentStatus::PICKED_UP, $shipment->refresh()->status);
+
+        // 2. Manual transition jump with custom location & description
+        $this->actingAs($admin)
+            ->post("/oms/shipments/{$shipment->awb_number}/transition", [
+                'status' => 'in_transit',
+                'location' => 'Checkpoint Tol Palimanan',
+                'description' => 'Linehaul melaju ke hub Surabaya',
+                'manual' => true,
+            ])
+            ->assertSessionHas('success');
+
+        $shipment->refresh();
+        $this->assertEquals(ShipmentStatus::IN_TRANSIT, $shipment->status);
+        $this->assertDatabaseHas('tracking_logs', [
+            'shipment_id' => $shipment->id,
+            'status' => 'in_transit',
+            'location' => 'Checkpoint Tol Palimanan',
+            'description' => 'Linehaul melaju ke hub Surabaya',
+        ]);
+    }
 }

@@ -155,7 +155,7 @@ const cashReceived = defineModel<boolean>('cashReceived', { required: true });
             >
                 <strong class="flex items-center gap-1.5">
                     <AlertTriangle v-if="topWillExceedLimit" class="h-4 w-4" />
-                    <span>Pengecekan Plafon Kredit B2B (BR-02)</span>
+                    <span>Pengecekan Plafon Kredit B2B</span>
                 </strong>
                 <span class="font-bold tabular-nums">
                     Eksposur Baru:

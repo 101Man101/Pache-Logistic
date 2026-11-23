@@ -33,30 +33,18 @@ const activeTab = ref<
 
     <div class="space-y-6">
         <div>
-            <p
-                class="text-[10.5px] font-bold tracking-[0.14em] text-[var(--brand-blue)] uppercase"
-            >
-                MASTER DATA MANAGEMENT (MDM)
-            </p>
-            <h1
-                class="mt-1 text-[23px] font-[650] tracking-[-0.03em] text-[var(--ink)]"
-            >
+            <p class="pache-eyebrow">MASTER DATA MANAGEMENT (MDM)</p>
+            <h1 class="pache-page-title">
                 Pengaturan Tarif, Surcharge, Vendor 3PL, Pelanggan &amp; Cabang
             </h1>
         </div>
 
-        <div
-            class="inline-flex flex-wrap gap-1 rounded-[12px] bg-[var(--surface-soft)] p-1"
-        >
+        <div class="pache-tab-bar">
             <button
                 type="button"
                 @click="activeTab = 'tariffs'"
-                class="inline-flex items-center gap-2 rounded-[9px] px-4 py-2 text-[13px] font-semibold"
-                :class="
-                    activeTab === 'tariffs'
-                        ? 'bg-[var(--surface)] text-[var(--brand-blue)] shadow-xs'
-                        : 'text-[var(--muted)]'
-                "
+                class="pache-tab-btn"
+                :class="{ 'is-active': activeTab === 'tariffs' }"
             >
                 <Map class="h-4 w-4" />
                 <span
@@ -68,12 +56,8 @@ const activeTab = ref<
             <button
                 type="button"
                 @click="activeTab = 'surcharges'"
-                class="inline-flex items-center gap-2 rounded-[9px] px-4 py-2 text-[13px] font-semibold"
-                :class="
-                    activeTab === 'surcharges'
-                        ? 'bg-[var(--surface)] text-[var(--brand-blue)] shadow-xs'
-                        : 'text-[var(--muted)]'
-                "
+                class="pache-tab-btn"
+                :class="{ 'is-active': activeTab === 'surcharges' }"
             >
                 <Percent class="h-4 w-4" />
                 <span>Master Surcharge ({{ surcharges.length }})</span>
@@ -81,12 +65,8 @@ const activeTab = ref<
             <button
                 type="button"
                 @click="activeTab = 'vendors'"
-                class="inline-flex items-center gap-2 rounded-[9px] px-4 py-2 text-[13px] font-semibold"
-                :class="
-                    activeTab === 'vendors'
-                        ? 'bg-[var(--surface)] text-[var(--brand-blue)] shadow-xs'
-                        : 'text-[var(--muted)]'
-                "
+                class="pache-tab-btn"
+                :class="{ 'is-active': activeTab === 'vendors' }"
             >
                 <Handshake class="h-4 w-4" />
                 <span>Vendor &amp; Mitra 3PL ({{ vendors.length }})</span>
@@ -94,12 +74,8 @@ const activeTab = ref<
             <button
                 type="button"
                 @click="activeTab = 'customers'"
-                class="inline-flex items-center gap-2 rounded-[9px] px-4 py-2 text-[13px] font-semibold"
-                :class="
-                    activeTab === 'customers'
-                        ? 'bg-[var(--surface)] text-[var(--brand-blue)] shadow-xs'
-                        : 'text-[var(--muted)]'
-                "
+                class="pache-tab-btn"
+                :class="{ 'is-active': activeTab === 'customers' }"
             >
                 <Users class="h-4 w-4" />
                 <span>Pelanggan &amp; TOP ({{ customers.length }})</span>
@@ -107,12 +83,8 @@ const activeTab = ref<
             <button
                 type="button"
                 @click="activeTab = 'branches'"
-                class="inline-flex items-center gap-2 rounded-[9px] px-4 py-2 text-[13px] font-semibold"
-                :class="
-                    activeTab === 'branches'
-                        ? 'bg-[var(--surface)] text-[var(--brand-blue)] shadow-xs'
-                        : 'text-[var(--muted)]'
-                "
+                class="pache-tab-btn"
+                :class="{ 'is-active': activeTab === 'branches' }"
             >
                 <Building2 class="h-4 w-4" />
                 <span>Cabang ({{ branches.length }})</span>

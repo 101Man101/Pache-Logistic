@@ -259,6 +259,13 @@ final class ShipmentController extends Controller
                     'value' => $s->value,
                     'label' => $s->label(),
                 ], $shipment->status->allowedTransitions()),
+                'all_statuses' => array_values(array_map(
+                    static fn (ShipmentStatus $s): array => [
+                        'value' => $s->value,
+                        'label' => $s->label(),
+                    ],
+                    array_filter(ShipmentStatus::cases(), static fn (ShipmentStatus $s): bool => $s !== ShipmentStatus::DRAFT),
+                )),
                 'epod' => $shipment->epod_receiver_name ? [
                     'receiver_name' => $shipment->epod_receiver_name,
                     'receiver_relation' => $shipment->epod_receiver_relation,
@@ -360,15 +367,18 @@ final class ShipmentController extends Controller
             ShipmentStatus::DESTINATION_HUB, ShipmentStatus::OUT_FOR_DELIVERY, ShipmentStatus::DELIVERED => $shipment->destinationBranch->name ?? 'Destination Hub',
             default => $shipment->originBranch->name ?? 'Origin Hub',
         };
+        $locationInput = trim((string) ($validated['location'] ?? ''));
+        $descriptionInput = trim((string) ($validated['description'] ?? ''));
 
         try {
             $useCase->execute(
                 shipment: $shipment,
                 nextStatus: $nextStatus,
-                location: $validated['location'] ?: $defaultLocation,
-                description: $validated['description'] ?: "Status resi diperbarui menjadi {$nextStatus->label()}.",
+                location: $locationInput !== '' ? $locationInput : $defaultLocation,
+                description: $descriptionInput !== '' ? $descriptionInput : "Status resi diperbarui menjadi {$nextStatus->label()}.",
                 branchId: $shipment->origin_branch_id,
                 actorId: $request->user()?->id,
+                allowManual: (bool) ($validated['manual'] ?? false),
             );
         } catch (DomainException $e) {
             return back()->with('error', $e->getMessage());

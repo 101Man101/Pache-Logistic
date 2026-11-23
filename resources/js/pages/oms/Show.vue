@@ -11,7 +11,7 @@ import {
     ShieldCheck,
     Trash2,
 } from '@lucide/vue';
-import { computed } from 'vue';
+import { computed, watch } from 'vue';
 import {
     formatIdr,
     formatWeight,
@@ -75,6 +75,7 @@ interface ShipmentDetail {
     status: string;
     status_label: string;
     allowed_transitions: Array<{ value: string; label: string }>;
+    all_statuses: Array<{ value: string; label: string }>;
     epod: {
         receiver_name: string;
         receiver_relation: string;
@@ -147,6 +148,23 @@ const vendorForm = useForm({
     vendor_cost: props.shipment.vendor_cost ?? 0,
 });
 
+const statusForm = useForm({
+    status:
+        props.shipment.allowed_transitions[0]?.value ?? props.shipment.status,
+    location: '',
+    description: '',
+    manual: true,
+});
+
+watch(
+    () => props.shipment.status,
+    () => {
+        statusForm.status =
+            props.shipment.allowed_transitions[0]?.value ??
+            props.shipment.status;
+    },
+);
+
 const estimatedMargin = computed(
     () =>
         props.shipment.total_amount - (Number(props.shipment.vendor_cost) || 0),
@@ -163,9 +181,23 @@ function confirmPayment(): void {
 function transitionTo(statusValue: string): void {
     router.post(
         `/oms/shipments/${props.shipment.awb_number}/transition`,
-        { status: statusValue },
-        { preserveScroll: true },
+        {
+            status: statusValue,
+            location: statusForm.location.trim() || null,
+            description: statusForm.description.trim() || null,
+        },
+        {
+            preserveScroll: true,
+            onSuccess: () => statusForm.reset('location', 'description'),
+        },
     );
+}
+
+function submitManualStatus(): void {
+    statusForm.post(`/oms/shipments/${props.shipment.awb_number}/transition`, {
+        preserveScroll: true,
+        onSuccess: () => statusForm.reset('location', 'description'),
+    });
 }
 
 function submitEpod(): void {
@@ -280,7 +312,7 @@ function saveVendor(): void {
                     <strong
                         class="block text-[14px] text-[#991b1b] dark:text-[#fca5a5]"
                     >
-                        Tertahan oleh Non-COD Dispatch Gate (BR-08)
+                        Tertahan oleh Non-COD Dispatch Gate
                     </strong>
                     <p
                         class="mt-0.5 text-[13px] text-[#7f1d1d] dark:text-[#fecaca]"
@@ -306,7 +338,7 @@ function saveVendor(): void {
             <button
                 type="button"
                 @click="confirmPayment"
-                class="pache-btn-primary border-[#15803d] bg-[#15803d] hover:bg-[#166534]"
+                class="pache-btn-success"
             >
                 <CheckCircle2 class="h-4 w-4" />
                 <span>
@@ -737,8 +769,8 @@ function saveVendor(): void {
                 <!-- State Machine Transitions (BR-03) & e-POD (BR-07) -->
                 <section class="pache-panel space-y-4 p-5">
                     <div class="flex items-center justify-between">
-                        <h2 class="text-[16px] font-[650] text-[var(--ink)]">
-                            Kontrol Status Pengiriman (BR-03 State Machine)
+                        <h2 class="pache-section-title">
+                            Kontrol Status Pengiriman
                         </h2>
                         <span
                             class="inline-flex items-center gap-1 text-[12px] font-semibold text-[#15803d]"
@@ -770,7 +802,77 @@ function saveVendor(): void {
                         }}).
                     </p>
 
-                    <!-- Mandatory e-POD Form (BR-07) -->
+                    <!-- Manual Status & Tracking Checkpoint Form -->
+                    <form
+                        @submit.prevent="submitManualStatus"
+                        class="space-y-3 rounded-[12px] border border-[var(--hairline)] bg-[var(--surface-soft)] p-4"
+                    >
+                        <p
+                            class="text-[11px] font-bold tracking-[0.08em] text-[var(--muted)] uppercase"
+                        >
+                            Input Update Status &amp; Tracking Manual
+                        </p>
+                        <div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                            <div>
+                                <label
+                                    class="mb-1 block text-[11.5px] font-semibold text-[var(--muted)]"
+                                    >Target Status</label
+                                >
+                                <select
+                                    v-model="statusForm.status"
+                                    class="pache-input"
+                                >
+                                    <option
+                                        v-for="st in shipment.all_statuses"
+                                        :key="st.value"
+                                        :value="st.value"
+                                    >
+                                        {{ st.label }}
+                                    </option>
+                                </select>
+                            </div>
+                            <div>
+                                <label
+                                    class="mb-1 block text-[11.5px] font-semibold text-[var(--muted)]"
+                                    >Lokasi Saat Ini (opsional)</label
+                                >
+                                <input
+                                    v-model="statusForm.location"
+                                    type="text"
+                                    class="pache-input"
+                                    placeholder="Contoh: Sorting Hub Surabaya / KM 57"
+                                />
+                            </div>
+                        </div>
+                        <div>
+                            <label
+                                class="mb-1 block text-[11.5px] font-semibold text-[var(--muted)]"
+                                >Catatan / Deskripsi Tracking (opsional)</label
+                            >
+                            <input
+                                v-model="statusForm.description"
+                                type="text"
+                                class="pache-input"
+                                placeholder="Contoh: Paket keluar manifest menuju armada pengiriman"
+                            />
+                        </div>
+                        <div class="flex justify-end">
+                            <button
+                                type="submit"
+                                :disabled="statusForm.processing"
+                                class="pache-btn-primary"
+                            >
+                                <CheckCircle2 class="h-4 w-4" />
+                                <span>{{
+                                    statusForm.processing
+                                        ? 'Menyimpan...'
+                                        : 'Simpan Update Status Manual'
+                                }}</span>
+                            </button>
+                        </div>
+                    </form>
+
+                    <!-- Mandatory e-POD Form -->
                     <div
                         v-if="shipment.status === 'out_for_delivery'"
                         class="rounded-[12px] border border-[#bfdbfe] bg-[#eff6ff] p-4 dark:border-[#1d4ed8]/40 dark:bg-[#1e3a8a]/20"
@@ -778,8 +880,8 @@ function saveVendor(): void {
                         <h3
                             class="text-[14px] font-bold text-[#1d4ed8] dark:text-[#93c5fd]"
                         >
-                            Unggah Bukti Terima Digital (e-POD — BR-07 · Tanpa
-                            Penagihan Tunai)
+                            Unggah Bukti Terima Digital (e-POD · Tanpa Penagihan
+                            Tunai)
                         </h3>
                         <form
                             @submit.prevent="submitEpod"

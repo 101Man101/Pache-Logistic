@@ -78,10 +78,8 @@ function copyAwb(awb: string): void {
     <div class="space-y-5">
         <div class="flex flex-wrap items-end justify-between gap-4">
             <div>
-                <p class="text-[10.5px] font-bold tracking-[0.14em] text-[var(--brand-blue)] uppercase">
-                    ORDER MANAGEMENT SYSTEM (OMS)
-                </p>
-                <h1 class="mt-1 text-[23px] font-[650] tracking-[-0.03em] text-[var(--ink)]">
+                <p class="pache-eyebrow">ORDER MANAGEMENT SYSTEM (OMS)</p>
+                <h1 class="pache-page-title">
                     Daftar Resi Pengiriman ({{ shipments.total }})
                 </h1>
             </div>
@@ -97,7 +95,9 @@ function copyAwb(awb: string): void {
             class="pache-panel grid grid-cols-1 gap-3 p-4 sm:grid-cols-2 lg:grid-cols-[1.4fr_1fr_1fr_1fr_auto]"
         >
             <div class="relative">
-                <Search class="pointer-events-none absolute top-3 left-3 h-4 w-4 text-[var(--muted)]" />
+                <Search
+                    class="pointer-events-none absolute top-3 left-3 h-4 w-4 text-[var(--muted)]"
+                />
                 <input
                     v-model="search"
                     type="text"
@@ -106,18 +106,26 @@ function copyAwb(awb: string): void {
                 />
             </div>
 
-            <select v-model="paymentMethod" @change="applyFilter" class="pache-input">
+            <select
+                v-model="paymentMethod"
+                @change="applyFilter"
+                class="pache-input"
+            >
                 <option value="">Semua Kanal Non-COD</option>
                 <option value="online">Online Payment (QRIS/VA)</option>
                 <option value="cash">Cash (Loket Asal)</option>
                 <option value="top">B2B Credit (TOP)</option>
             </select>
 
-            <select v-model="paymentStatus" @change="applyFilter" class="pache-input">
+            <select
+                v-model="paymentStatus"
+                @change="applyFilter"
+                class="pache-input"
+            >
                 <option value="">Semua Status Bayar</option>
                 <option value="paid">Lunas (PAID)</option>
                 <option value="billed">Kredit TOP (BILLED)</option>
-                <option value="pending">Pending (Ditahan BR-08)</option>
+                <option value="pending">Pending (Menunggu Pelunasan)</option>
             </select>
 
             <select v-model="status" @change="applyFilter" class="pache-input">
@@ -131,9 +139,7 @@ function copyAwb(awb: string): void {
                 <option value="cancelled">Cancelled</option>
             </select>
 
-            <button type="submit" class="pache-btn-primary">
-                Filter
-            </button>
+            <button type="submit" class="pache-btn-primary">Filter</button>
         </form>
 
         <!-- Data Table -->
@@ -156,7 +162,10 @@ function copyAwb(awb: string): void {
                         <tr v-for="s in shipments.data" :key="s.id">
                             <td>
                                 <div class="flex items-center gap-1.5">
-                                    <Link :href="`/oms/shipments/${s.awb_number}`" class="font-bold text-[var(--brand-blue)] no-underline tabular-nums hover:underline">
+                                    <Link
+                                        :href="`/oms/shipments/${s.awb_number}`"
+                                        class="font-bold text-[var(--brand-blue)] tabular-nums no-underline hover:underline"
+                                    >
                                         {{ s.awb_number }}
                                     </Link>
                                     <button
@@ -167,53 +176,97 @@ function copyAwb(awb: string): void {
                                     >
                                         <Copy class="h-3.5 w-3.5" />
                                     </button>
-                                    <span v-if="copiedAwb === s.awb_number" class="text-[11px] font-semibold text-[#15803d]">
+                                    <span
+                                        v-if="copiedAwb === s.awb_number"
+                                        class="text-[11px] font-semibold text-[#15803d]"
+                                    >
                                         Disalin
                                     </span>
                                 </div>
-                                <p v-if="s.reference_no" class="text-[11.5px] text-[var(--muted)]">
+                                <p
+                                    v-if="s.reference_no"
+                                    class="text-[11.5px] text-[var(--muted)]"
+                                >
                                     Ref: {{ s.reference_no }}
                                 </p>
                             </td>
                             <td>
-                                <strong class="block text-[13.5px]">{{ s.customer_name }}</strong>
-                                <span class="text-[12px] text-[var(--muted)]">Ke: {{ s.consignee_name }}</span>
+                                <strong class="block text-[13.5px]">{{
+                                    s.customer_name
+                                }}</strong>
+                                <span class="text-[12px] text-[var(--muted)]"
+                                    >Ke: {{ s.consignee_name }}</span
+                                >
                             </td>
                             <td>
-                                <span class="block font-semibold">{{ s.origin }} → {{ s.destination }}</span>
-                                <span class="text-[11.5px] text-[var(--muted)]">Layanan {{ s.service_type }}</span>
+                                <span class="block font-semibold"
+                                    >{{ s.origin }} → {{ s.destination }}</span
+                                >
+                                <span class="text-[11.5px] text-[var(--muted)]"
+                                    >Layanan {{ s.service_type }}</span
+                                >
                             </td>
-                            <td class="tabular-nums">{{ formatWeight(s.chargeable_weight_kg) }}</td>
-                            <td class="font-bold tabular-nums">{{ formatIdr(s.total_amount) }}</td>
+                            <td class="tabular-nums">
+                                {{ formatWeight(s.chargeable_weight_kg) }}
+                            </td>
+                            <td class="font-bold tabular-nums">
+                                {{ formatIdr(s.total_amount) }}
+                            </td>
                             <td>
                                 <div class="flex flex-col items-start gap-1">
-                                    <span class="rounded-[6px] border px-2 py-0.5 text-[11px] font-bold" :class="paymentBadgeClass(s.payment_method)">
+                                    <span
+                                        class="rounded-[6px] border px-2 py-0.5 text-[11px] font-bold"
+                                        :class="
+                                            paymentBadgeClass(s.payment_method)
+                                        "
+                                    >
                                         {{ s.payment_method_label }}
                                     </span>
-                                    <span class="rounded-[6px] border px-2 py-0.5 text-[10.5px] font-semibold" :class="paymentStatusBadgeClass(s.payment_status)">
+                                    <span
+                                        class="rounded-[6px] border px-2 py-0.5 text-[10.5px] font-semibold"
+                                        :class="
+                                            paymentStatusBadgeClass(
+                                                s.payment_status,
+                                            )
+                                        "
+                                    >
                                         {{ s.payment_status_label }}
                                     </span>
                                 </div>
                             </td>
                             <td>
-                                <span class="rounded-[6px] border px-2 py-0.5 text-[11px] font-bold" :class="shipmentStatusBadgeClass(s.status)">
+                                <span
+                                    class="rounded-[6px] border px-2 py-0.5 text-[11px] font-bold"
+                                    :class="shipmentStatusBadgeClass(s.status)"
+                                >
                                     {{ s.status_label }}
                                 </span>
                             </td>
                             <td class="text-right">
                                 <div class="inline-flex items-center gap-1.5">
-                                    <Link :href="`/oms/shipments/${s.awb_number}`" class="pache-btn-outline min-h-[32px] px-2.5 text-[12px]">
+                                    <Link
+                                        :href="`/oms/shipments/${s.awb_number}`"
+                                        class="pache-btn-outline min-h-[32px] px-2.5 text-[12px]"
+                                    >
                                         Detail
                                     </Link>
-                                    <Link :href="`/oms/shipments/${s.awb_number}/label`" class="pache-btn-outline min-h-[32px] px-2.5 text-[12px]" title="Cetak Label Termal A6">
+                                    <Link
+                                        :href="`/oms/shipments/${s.awb_number}/label`"
+                                        class="pache-btn-outline min-h-[32px] px-2.5 text-[12px]"
+                                        title="Cetak Label Termal A6"
+                                    >
                                         <Printer class="h-3.5 w-3.5" />
                                     </Link>
                                 </div>
                             </td>
                         </tr>
                         <tr v-if="shipments.data.length === 0">
-                            <td colspan="8" class="py-10 text-center text-[var(--muted)]">
-                                Belum ada resi yang cocok dengan filter pencarian.
+                            <td
+                                colspan="8"
+                                class="py-10 text-center text-[var(--muted)]"
+                            >
+                                Belum ada resi yang cocok dengan filter
+                                pencarian.
                             </td>
                         </tr>
                     </tbody>
@@ -221,8 +274,13 @@ function copyAwb(awb: string): void {
             </div>
 
             <!-- Pagination -->
-            <div v-if="shipments.links.length > 3" class="flex flex-wrap items-center justify-between gap-2 border-t border-[var(--hairline)] px-4 py-3 text-[12.5px]">
-                <span class="text-[var(--muted)] tabular-nums">Total {{ shipments.total }} pengiriman</span>
+            <div
+                v-if="shipments.links.length > 3"
+                class="flex flex-wrap items-center justify-between gap-2 border-t border-[var(--hairline)] px-4 py-3 text-[12.5px]"
+            >
+                <span class="text-[var(--muted)] tabular-nums"
+                    >Total {{ shipments.total }} pengiriman</span
+                >
                 <div class="flex flex-wrap gap-1">
                     <template v-for="(link, idx) in shipments.links" :key="idx">
                         <Link
@@ -235,7 +293,12 @@ function copyAwb(awb: string): void {
                                     : 'border-[var(--hairline)] bg-[var(--surface)] text-[var(--ink)] hover:bg-[var(--surface-pink)]'
                             "
                         >
-                            {{ link.label.replace(/&laquo;|&raquo;/g, '').trim() || (idx === 0 ? 'Sebelumnya' : 'Berikutnya') }}
+                            {{
+                                link.label
+                                    .replace(/&laquo;|&raquo;/g, '')
+                                    .trim() ||
+                                (idx === 0 ? 'Sebelumnya' : 'Berikutnya')
+                            }}
                         </Link>
                     </template>
                 </div>

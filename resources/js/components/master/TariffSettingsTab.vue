@@ -352,11 +352,9 @@ function toggleTariff(id: number): void {
                                 <button
                                     type="button"
                                     @click="toggleTariff(t.id)"
-                                    class="rounded-[6px] border px-2 py-0.5 text-[11px] font-bold"
+                                    class="pache-status-pill"
                                     :class="
-                                        t.is_active
-                                            ? 'border-[#bbf7d0] bg-[#ecfdf3] text-[#15803d]'
-                                            : 'border-[#fecaca] bg-[#fef2f2] text-[#991b1b]'
+                                        t.is_active ? 'is-success' : 'is-danger'
                                     "
                                 >
                                     {{ t.is_active ? 'AKTIF' : 'NONAKTIF' }}

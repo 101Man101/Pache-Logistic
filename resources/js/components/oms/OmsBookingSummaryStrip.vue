@@ -30,7 +30,7 @@ defineProps<{
             class="rounded-[14px] border border-[#d3e5ff] bg-[#dcecff] p-4 text-[#214f8a] dark:border-[#303030] dark:bg-[#1a1a1a] dark:text-[var(--ink)]"
         >
             <span class="text-[11.5px] font-semibold"
-                >Chargeable Weight (BR-01)</span
+                >Chargeable Weight (Berat Tagih)</span
             >
             <p class="mt-1 text-[22px] font-bold tabular-nums">
                 {{ chargeableKg }} kg

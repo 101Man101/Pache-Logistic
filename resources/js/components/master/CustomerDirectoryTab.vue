@@ -165,7 +165,7 @@ function saveCustomer(): void {
                         <tr>
                             <th>Kode &amp; Nama</th>
                             <th>Skema Bayar</th>
-                            <th>Plafon Kredit (BR-02)</th>
+                            <th>Plafon Kredit</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -179,11 +179,11 @@ function saveCustomer(): void {
                             </td>
                             <td>
                                 <span
-                                    class="rounded-[6px] border px-2 py-0.5 text-[11px] font-bold"
+                                    class="pache-status-pill"
                                     :class="
                                         c.is_top_enabled
-                                            ? 'border-[#e7cfa8] bg-[#f8eddf] text-[#92400e]'
-                                            : 'border-[#bfdbfe] bg-[#eff6ff] text-[#1d4ed8]'
+                                            ? 'is-warning'
+                                            : 'is-info'
                                     "
                                 >
                                     {{

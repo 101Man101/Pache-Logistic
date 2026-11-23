@@ -293,16 +293,8 @@ onUnmounted(() => window.removeEventListener('keydown', handleKeydown));
                 </div>
             </nav>
 
-            <!-- Strictly Non-COD Policy Badge & User Card -->
-            <div class="mt-2 space-y-2 border-t border-[var(--hairline)] pt-3">
-                <div
-                    class="rounded-[11px] border border-[#bfdbfe] bg-[#eff6ff] px-3 py-2 text-[11px] leading-snug text-[#1d4ed8] dark:border-[#1d4ed8]/40 dark:bg-[#1e3a8a]/25 dark:text-[#93c5fd]"
-                >
-                    <strong class="block font-bold"
-                        >Mode Strictly Non-COD</strong
-                    >
-                    <span>Online · Cash Loket · TOP</span>
-                </div>
+            <!-- User Card -->
+            <div class="mt-2 border-t border-[var(--hairline)] pt-3">
                 <div
                     class="flex items-center justify-between gap-2 px-1.5 pt-1"
                 >
@@ -410,15 +402,6 @@ onUnmounted(() => window.removeEventListener('keydown', handleKeydown));
                     />
                     <Moon v-else class="h-4 w-4" :stroke-width="1.8" />
                 </button>
-
-                <Link
-                    v-if="canCreateShipment"
-                    href="/oms/shipments/create"
-                    class="pache-btn-primary hidden sm:inline-flex"
-                >
-                    <PackagePlus class="h-4 w-4" :stroke-width="1.8" />
-                    <span>Booking Resi</span>
-                </Link>
             </div>
         </header>
 

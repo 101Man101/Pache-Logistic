@@ -60,6 +60,10 @@ final class PublicTrackingController extends Controller
                     'volumetric_divisor' => $t->volumetric_divisor,
                     'min_weight_kg' => (float) $t->min_weight_kg,
                     'rate_per_kg' => (float) $t->rate_per_kg,
+                    'fuel_surcharge_pct' => (float) $t->fuel_surcharge_pct,
+                    'handling_fee' => (float) $t->handling_fee,
+                    'heavy_weight_threshold_kg' => $t->heavy_weight_threshold_kg !== null ? (float) $t->heavy_weight_threshold_kg : null,
+                    'heavy_weight_surcharge_per_kg' => (float) $t->heavy_weight_surcharge_per_kg,
                     'sla_days' => $t->sla_days,
                 ])
                 ->all()
